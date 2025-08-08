@@ -271,7 +271,7 @@
     }
 
     // ---- Monster models (more details) ----
-    function makeMonsterModel(mon){
+    function makeMonsterModel(mon, opts={}){ const { withRing=true } = opts; 
       const g = new THREE.Group();
       g.userData.mon = mon;
       const toon = (c)=> new THREE.MeshToonMaterial({ color: new THREE.Color(c) });
@@ -355,9 +355,8 @@
       // 口（全員共通、前面に小さなリング）
       const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.35, 8, 24), dark); mouth.rotation.x = Math.PI/2; mouth.position.set(0, 0.2, 7.2); g.add(mouth);
 
-      // 足場リング
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
-      ring.rotation.x = Math.PI/2; g.add(ring);
+      // 足場リング（フィールド表示のみ）
+      if(withRing){ const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 })); ring.rotation.x = Math.PI/2; g.add(ring); }
 
       // エッジ線で視認性UP
       const outlines = [];
@@ -374,9 +373,11 @@
       const area = 900;
       for(let i=0;i<count;i++){
         const mon = MONS[(Math.random()*MONS.length)|0];
-        const g = makeMonsterModel(mon);
+        const g = makeMonsterModel(mon, { withRing:true });
         const x = (Math.random()-0.5)*2*area; const z = (Math.random()-0.5)*2*area; const y = getTopHeightAt(x, z) + 6;
         g.position.set(x, y, z); g.rotation.y = Math.random()*Math.PI*2; g.userData.type = 'spawn';
+        // ランダム徘徊AI 初期化
+        g.userData.wander = { state: Math.random()<0.5 ? 'move':'stop', t: 0.5 + Math.random()*1.5, speed: 20 + Math.random()*25, dir: new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize(), area };
         spawns.add(g);
       }
     }
@@ -470,7 +471,7 @@
       const cam = new THREE.PerspectiveCamera(38, 1, 0.01, 2000);
       const light = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(light);
       const dlight = new THREE.DirectionalLight(0xffffff, .8); dlight.position.set(1,2,1); scene.add(dlight);
-      const model = makeMonsterModel(mon);
+      const model = makeMonsterModel(mon, { withRing:false });
       scene.add(model);
 
       const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
@@ -590,8 +591,27 @@
       // Spawn anims
       const t = performance.now()/1000;
       spawns.children.forEach((g,i)=>{
-        g.position.y = 12 + Math.sin(t*1.6 + i)*1.5;
-        g.rotation.y += 0.01;
+        // 徘徊AI：move と stop を繰り返す
+        const w = g.userData.wander; if(w){
+          w.t -= dt;
+          if(w.t <= 0){
+            if(w.state === 'move'){ w.state = 'stop'; w.t = 0.5 + Math.random()*1.5; }
+            else { w.state = 'move'; w.t = 1.2 + Math.random()*2.0; w.dir.set(Math.random()-0.5,0,Math.random()-0.5).normalize(); w.speed = 20 + Math.random()*25; }
+          }
+          if(w.state === 'move'){
+            const step = w.speed * dt;
+            g.position.x += w.dir.x * step;
+            g.position.z += w.dir.z * step;
+            // エリア外に出そうなら向きを変える
+            if(Math.abs(g.position.x) > w.area || Math.abs(g.position.z) > w.area){ w.dir.multiplyScalar(-1); }
+            // 浮遊揺れ＋建物追従
+            g.position.y = 12 + Math.sin(t*1.6 + i)*1.5;
+            const top = getTopHeightAt(g.position.x, g.position.z) + 6; if(g.position.y < top) g.position.y = top;
+            // 進行方向に向ける
+            g.rotation.y = Math.atan2(w.dir.x, w.dir.z);
+          }
+        }
+        // 種族別アニメ
         const mon = g.userData.mon; const parts = g.userData.parts||{};
         if(mon?.key==='mossie' && parts.wingL && parts.wingR){ const a = Math.sin(t*6 + i)*0.5 + 0.6; parts.wingL.rotation.z =  1.1 + a*0.25; parts.wingR.rotation.z = -1.1 - a*0.25; }
         if(mon?.key==='sparkid' && parts.ant && parts.tip){ parts.ant.rotation.z = Math.sin(t*4 + i)*0.15; parts.tip.position.y = 11.5 + Math.sin(t*3 + i)*0.4; }
