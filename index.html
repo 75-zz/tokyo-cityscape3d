@@ -184,7 +184,6 @@
     const tooltip = document.getElementById('tooltip');
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-    let highlighted = null, origMat = null;
 
     // ---- Utils: WebMercator ----
     const DEG2RAD = Math.PI / 180; const R = 6378137;
@@ -238,21 +237,102 @@
       spawnMonsters();
     }
 
+    // ---- Monster models ----
+    function makeMonsterModel(mon){
+      const g = new THREE.Group();
+      g.userData.mon = mon;
+      const mainMat = new THREE.MeshToonMaterial({ color: new THREE.Color(mon.color) });
+      const white = new THREE.MeshToonMaterial({ color: 0xffffff });
+      const dark = new THREE.MeshToonMaterial({ color: 0x1f2937 });
+
+      const addEye = (x,y,z,s=1)=>{
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.9*s, 12, 12), dark);
+        eye.position.set(x,y,z); g.add(eye);
+      };
+
+      switch(mon.key){
+        case 'fluffin': {
+          // 丸いボディ＋耳
+          const body = new THREE.Mesh(new THREE.SphereGeometry(8, 24, 24), mainMat);
+          const earL = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5.5, 12), mainMat);
+          const earR = earL.clone();
+          earL.position.set(-4, 10, 0); earL.rotation.z = 0.2;
+          earR.position.set( 4, 10, 0); earR.rotation.z = -0.2;
+          addEye(-2.2, 3.2, 7.4); addEye(2.2, 3.2, 7.4);
+          g.add(body, earL, earR);
+          g.userData.anim = 'float';
+          break;
+        }
+        case 'sparkid': {
+          // 少し角ばったボディ＋アンテナ
+          const body = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 10), mainMat);
+          const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 7, 10), white);
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 12), white);
+          ant.position.set(0, 7.5, 0); tip.position.set(0, 11.5, 0);
+          addEye(-2.8, 2.5, 5.2); addEye(2.8, 2.5, 5.2);
+          g.add(body, ant, tip);
+          g.userData.anim = 'antenna';
+          break;
+        }
+        case 'mossie': {
+          // しずく型ボディ＋葉っぱ風ウィング
+          const body = new THREE.Mesh(new THREE.SphereGeometry(7.5, 24, 24), mainMat);
+          const tail = new THREE.Mesh(new THREE.ConeGeometry(3.2, 6.5, 12), mainMat);
+          tail.rotation.x = Math.PI; tail.position.set(0, -7, -1);
+          const wingL = new THREE.Mesh(new THREE.ConeGeometry(2.2, 8, 12), white);
+          const wingR = wingL.clone();
+          wingL.rotation.z =  1.1; wingL.position.set(-7, 2, 0);
+          wingR.rotation.z = -1.1; wingR.position.set( 7, 2, 0);
+          addEye(-2.1, 2.6, 6.7); addEye(2.1, 2.6, 6.7);
+          g.add(body, tail, wingL, wingR);
+          g.userData.parts = { wingL, wingR };
+          g.userData.anim = 'flap';
+          break;
+        }
+        case 'embero': {
+          // 炎っぽい三枚のコーン＋丸ボディ
+          const body = new THREE.Mesh(new THREE.SphereGeometry(7.5, 24, 24), mainMat);
+          const f1 = new THREE.Mesh(new THREE.ConeGeometry(2.2, 7, 8), white);
+          const f2 = f1.clone(); const f3 = f1.clone();
+          f1.position.set(0, 9.5, 0);
+          f2.position.set(-2.6, 8.8, -1.2); f2.rotation.z = 0.4;
+          f3.position.set( 2.6, 8.8, -1.2); f3.rotation.z = -0.4;
+          addEye(-2.2, 2.4, 6.7); addEye(2.2, 2.4, 6.7);
+          g.add(body, f1, f2, f3);
+          g.userData.anim = 'flicker';
+          break;
+        }
+        case 'glacio': {
+          // クリスタル風の多面体
+          const body = new THREE.Mesh(new THREE.IcosahedronGeometry(7.5, 0), mainMat);
+          const shard1 = new THREE.Mesh(new THREE.ConeGeometry(2, 6, 6), white);
+          const shard2 = shard1.clone();
+          shard1.position.set(-4, -5, -2); shard1.rotation.x = -0.6;
+          shard2.position.set( 4, -5, -2); shard2.rotation.x = -0.6;
+          addEye(-2.0, 1.8, 6.8); addEye(2.0, 1.8, 6.8);
+          g.add(body, shard1, shard2);
+          g.userData.anim = 'spin';
+          break;
+        }
+      }
+
+      // 足場リング（出現マーカー）
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
+      ring.rotation.x = Math.PI/2; g.add(ring);
+
+      return g;
+    }
+
     // ---- Spawns ----
     function spawnMonsters(count = 10){
       spawns.clear();
       const area = 900; // 配置範囲（±area）
       for(let i=0;i<count;i++){
         const mon = MONS[(Math.random()*MONS.length)|0];
-        const g = new THREE.Group();
-        // ベース球
-        const sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 24, 24), new THREE.MeshStandardMaterial({ color: mon.color, emissive: 0xffffff, emissiveIntensity: 0.25 }));
-        // マーカーのリング
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
-        ring.rotation.x = Math.PI/2;
-        g.add(sphere); g.add(ring);
+        const g = makeMonsterModel(mon);
         g.position.set((Math.random()-0.5)*2*area, 12, (Math.random()-0.5)*2*area);
-        g.userData = { type:'spawn', mon };
+        g.rotation.y = Math.random()*Math.PI*2;
+        g.userData.type = 'spawn';
         spawns.add(g);
       }
     }
@@ -285,13 +365,7 @@
       enemyHP = Math.max(0, enemyHP - dmg);
       enemyHPEl.textContent = enemyHP;
       battleLogEl.textContent = `${currentEnemy.name} に ${dmg} ダメージ！`;
-      if(enemyHP === 0){
-        // 勝利
-        setTimeout(()=> openResult(currentEnemy), 400);
-        battleEl.style.display = 'none';
-        return;
-      }
-      // 反撃（ゆるめ）
+      if(enemyHP === 0){ setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; }
       const counter = randInt(3,8); myHP = Math.max(0, myHP - counter);
       battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`;
     });
@@ -307,9 +381,7 @@
     const continueBtn = document.getElementById('continueBtn');
     let captured = null;
 
-    function openResult(mon){
-      captured = mon; resultName.textContent = mon.name; resultAvatar.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`; resultEl.style.display='flex';
-    }
+    function openResult(mon){ captured = mon; resultName.textContent = mon.name; resultAvatar.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`; resultEl.style.display='flex'; }
     keepBtn.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
     continueBtn.addEventListener('click', ()=>{ resultEl.style.display='none'; });
 
@@ -349,13 +421,17 @@
       if(btn.dataset.spot){ const key = btn.dataset.spot; if(CENTER_PRESETS[key]){ center = CENTER_PRESETS[key].slice(); loadAndBuild(); } }
     });
 
+    function findSpawnGroup(obj){
+      let cur = obj; while(cur && cur.parent){ if(cur.userData && cur.userData.type==='spawn') return cur; cur = cur.parent; } return null;
+    }
+
     // Click interactions (buildings & spawns)
     addEventListener('pointerdown', (e)=>{
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left)/rect.width)*2 - 1; mouse.y = -((e.clientY - rect.top)/rect.height)*2 + 1;
       raycaster.setFromCamera(mouse, camera);
       const hitsSpawn = raycaster.intersectObjects(spawns.children, true);
-      if(hitsSpawn.length){ const g = hitsSpawn[0].object.parent; const mon = g.userData.mon; openBattle(mon); return; }
+      if(hitsSpawn.length){ const root = findSpawnGroup(hitsSpawn[0].object); if(root){ openBattle(root.userData.mon); } return; }
       const hitB = raycaster.intersectObjects(city.children, false)[0];
       if(hitB){ const tags = hitB.object.userData.tags || {}; const h = Math.round(hitB.object.userData.height); showTip(e.clientX, e.clientY, `${tags.name? tags.name + ' / ' : ''}高さ: ${h}m`); } else { hideTip(); }
     });
@@ -371,7 +447,36 @@
     addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
     // Animate
-    ;(function loop(){ requestAnimationFrame(loop); spawns.children.forEach((g,i)=>{ g.rotation.y += 0.01; g.position.y = 12 + Math.sin(performance.now()/600 + i)*1.5; }); controls.update(); renderer.render(scene, camera); })();
+    ;(function loop(){
+      requestAnimationFrame(loop);
+      const t = performance.now()/1000;
+      spawns.children.forEach((g,i)=>{
+        // 共通のふわふわ
+        g.position.y = 12 + Math.sin(t*1.6 + i)*1.5;
+        g.rotation.y += 0.01;
+        // 種族別アニメ
+        const mon = g.userData.mon; const parts = g.userData.parts||{};
+        switch(mon?.key){
+          case 'mossie': {
+            if(parts.wingL && parts.wingR){ const a = Math.sin(t*6 + i)*0.5 + 0.6; parts.wingL.rotation.z =  1.1 + a*0.25; parts.wingR.rotation.z = -1.1 - a*0.25; }
+            break;
+          }
+          case 'sparkid': {
+            // アンテナをぷるぷる
+            break;
+          }
+          case 'embero': {
+            // 炎コーンを微振動（見た目だけ）
+            break;
+          }
+          case 'glacio': {
+            // クリスタルはゆっくりスピン
+            break;
+          }
+        }
+      });
+      controls.update(); renderer.render(scene, camera);
+    })();
 
     // Helpers
     function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
