@@ -21,21 +21,21 @@
 
     /* Overlays */
     .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10; }
-    .sheet{ position:relative; width:min(720px, 94vw); background:var(--glass); border:1px solid var(--line); border-radius:16px; padding:16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); }
+    .sheet{ position:relative; width:min(720px, 94vw); max-height:90vh; background:var(--glass); border:1px solid var(--line); border-radius:16px; padding:16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); }
     .row{ display:flex; gap:12px; align-items:center; }
     .space{ height:12px; }
     .title{ font: 600 16px/1.2 system-ui, "Noto Sans JP"; }
     .muted{ color:#4b5563; font-size:12px; }
     .btn{ background:var(--btn); color:var(--ink); border:1px solid var(--btn-line); padding:8px 12px; border-radius:10px; cursor:pointer; font:12px/1.2 system-ui; }
     .btn.primary{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border:none; }
-    .btn.flat{ background:transparent; border: none; color:#1f2937; text-decoration: underline; }
+    .btn.flat{ background:transparent; border: none; color:var(--ink); text-decoration: underline; }
     .iconbtn{ position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:999px; border:1px solid var(--btn-line); background:var(--btn); display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:700; }
     .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:12px; }
     .card{ background:var(--btn); border:1px solid var(--btn-line); border-radius:12px; padding:10px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
     .card .c3d{ width: 140px; height: 110px; border-radius: 10px; overflow: hidden; border:1px solid var(--btn-line); background: #fff; }
 
     /* Dex scroll when many */
-    #dexGrid{ max-height:60vh; overflow:auto; padding-right:4px; }
+    #dexGrid{ max-height:60vh; overflow-y:auto; padding-right:6px; -webkit-overflow-scrolling:touch; } #dexGrid::-webkit-scrollbar{ width:8px; } #dexGrid::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.25); border-radius:6px; } #dexGrid::-webkit-scrollbar-track{ background: transparent; }
 
     /* Mobile D-Pad */
     #pad { position: fixed; z-index: 6; display: none; }
@@ -447,7 +447,7 @@ out skel qt;`;
     const hud = document.getElementById('hud');
     function setStatus(msg){ hud.textContent = `Pastel City Hunt｜${msg}`; }
 
-    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); });
+    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); }); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); });
 
     // 先にローダー状態を宣言
     let loaderState = { active:false, r:null, scene:null, cam:null, model:null };
@@ -486,6 +486,11 @@ out skel qt;`;
     function playCounter(){ ensureAudio(); if(!ACTX) return; const t=ACTX.currentTime; beep(300,0.06,'square',0.03,t); beep(200,0.06,'square',0.03,t+0.05); }
     function playRun(){ ensureAudio(); if(!ACTX) return; const t=ACTX.currentTime; beep(880,0.06,'sine',0.02,t); beep(660,0.06,'sine',0.02,t+0.06); }
 
+    // user-gesture unlock (once)
+    function __unlockAudio(){ ensureAudio(); window.removeEventListener('pointerdown', __unlockAudio); window.removeEventListener('keydown', __unlockAudio); }
+    window.addEventListener('pointerdown', __unlockAudio, {once:true});
+    window.addEventListener('keydown', __unlockAudio, {once:true});{ ensureAudio(); if(!ACTX) return; const t=ACTX.currentTime; beep(880,0.06,'sine',0.02,t); beep(660,0.06,'sine',0.02,t+0.06); }
+
     // "ゴージャス" BGM for celebration
     function playCelebrationBGM(level){ ensureAudio(); if(!ACTX) return; stopBGM(); const t=ACTX.currentTime; const base = 392; // G4
       const seq = [1, 5/4, 3/2, 2, 5/3, 15/8, 2]; // 明るい進行
@@ -495,19 +500,32 @@ out skel qt;`;
     }
 
     // ---- Confetti ----
+    window.__confettiReady = false;
     const confettiCanvas = document.getElementById('confetti');
-    const ctx = confettiCanvas.getContext('2d');
+    let ctx; // delay init to avoid TDZ
     let confetti = []; let confettiUntil = 0;
-    function resizeConfetti(){ confettiCanvas.width = innerWidth; confettiCanvas.height = innerHeight; }
-    resizeConfetti();
+    function resizeConfetti(){ if(!confettiCanvas) return; confettiCanvas.width = innerWidth; confettiCanvas.height = innerHeight; }
+    // init after DOM
+    ctx = confettiCanvas.getContext('2d'); window.__confettiReady = !!ctx; resizeConfetti();
     function launchConfetti(durationMs=5000, count=240){
+      if(!window.__confettiReady) return;
       confetti = []; const colors = ['#6aa9ff','#ff9ecb','#88e1a1','#ffd27d','#bda6ff'];
       for(let i=0;i<count;i++){
         confetti.push({ x: Math.random()*innerWidth, y: -20-Math.random()*innerHeight*0.5, vx: (Math.random()-0.5)*2, vy: 2+Math.random()*3, w: 6+Math.random()*6, h: 10+Math.random()*14, r: Math.random()*Math.PI, vr: (Math.random()-0.5)*0.3, c: colors[(Math.random()*colors.length)|0], g: 0.03+Math.random()*0.04 });
       }
       confettiUntil = performance.now() + durationMs;
     }
-    function tickConfetti(){ if(!ctx) return; ctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height); const now = performance.now(); for(const p of confetti){ p.vy += p.g; p.x += p.vx; p.y += p.vy; p.r += p.vr; if(p.y > innerHeight+40){ p.y = -20; p.vy = 2+Math.random()*3; } ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore(); } if(now>confettiUntil){ confetti.length=0; } }
+    function tickConfetti(){
+      if(!window.__confettiReady) return;
+      ctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
+      const now = performance.now();
+      for(const p of confetti){
+        p.vy += p.g; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        if(p.y > innerHeight+40){ p.y = -20; p.vy = 2+Math.random()*3; }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore();
+      }
+      if(now>confettiUntil){ confetti.length=0; }
+    } ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore(); } if(now>confettiUntil){ confetti.length=0; } }
 
     // ---- Celebration overlay ----
     const cele = document.getElementById('celebrate');
