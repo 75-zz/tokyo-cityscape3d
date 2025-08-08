@@ -481,9 +481,14 @@ out skel qt;`;
     let ACTX = null; let bgmNodes = []; let AUDIO_OK = false;
     function ensureAudio(){
       if(!AUDIO_OK) return;
-      if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } }
-      if(ACTX && ACTX.state === 'suspended'){ ACTX.resume(); }
-    } } if((ACTX && ACTX.state) === 'suspended'){ ACTX.resume(); } }
+      if(!ACTX){
+        const C = window.AudioContext || window.webkitAudioContext;
+        if(C){ ACTX = new C(); }
+      }
+      if(ACTX && ACTX.state === 'suspended'){
+        ACTX.resume();
+      }
+    }
     function beep(freq=600, dur=0.12, type='triangle', vol=0.03, t0){ if(!ACTX) return; const t = t0 ?? ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
     function note(freq, start, dur, type='sine', vol=0.05){ if(!ACTX) return; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, start); g.gain.setValueAtTime(0, start); g.gain.linearRampToValueAtTime(vol, start+0.03); g.gain.exponentialRampToValueAtTime(0.0001, start+dur); o.connect(g).connect(ACTX.destination); o.start(start); o.stop(start+dur); bgmNodes.push(o,g); }
     function stopBGM(){ bgmNodes.forEach(n=>{ try{ (n.stop && n.stop()); (n.disconnect && n.disconnect()); }catch{} }); bgmNodes=[]; }
@@ -507,9 +512,6 @@ out skel qt;`;
       ensureAudio(); if(!ACTX) return; stopBGM(); const t=ACTX.currentTime; const base = 392;
       const seq = [1, 5/4, 3/2, 2, 5/3, 15/8, 2];
       let cur = t; const step = 0.28; for(let i=0;i<seq.length;i++){ const f = base*seq[i]; note(f, cur, 0.24, 'triangle', 0.06); note(f*2, cur, 0.22, 'sine', 0.03); cur += step; }
-      const chord = [base, base*5/4, base*3/2, base*2]; const landT = t + seq.length*step + 0.1; chord.forEach((f,idx)=> note(f, landT, 1.2-idx*0.1, 'triangle', 0.05));
-    }
-      // きらびやかな和音の着地
       const chord = [base, base*5/4, base*3/2, base*2]; const landT = t + seq.length*step + 0.1; chord.forEach((f,idx)=> note(f, landT, 1.2-idx*0.1, 'triangle', 0.05));
     }
 
