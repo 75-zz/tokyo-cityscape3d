@@ -414,7 +414,7 @@
       enemyHP = Math.max(0, enemyHP - dmg);
       enemyHPEl.textContent = enemyHP;
       battleLogEl.textContent = `${currentEnemy.name} に ${dmg} ダメージ！`;
-      if(enemyHP === 0){ setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; }
+      if(enemyHP === 0){ playFanfare(); setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; } }
       const counter = randInt(3,8); myHP = Math.max(0, myHP - counter);
       battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`;
     });
@@ -457,6 +457,9 @@
           const time = document.createElement('div'); time.className='muted'; time.textContent = new Date(it.ts).toLocaleString(); d.appendChild(time);
           dexGrid.appendChild(d);
           ensureCard(c, it, true);
+          // 図鑑カード：クリックで一回転＆鳴き声
+          c.style.cursor = 'pointer';
+          c.addEventListener('click', ()=>{ const entry = containerToCard.get(c); if(entry){ entry.spin = Math.PI*2; } playCry(it); });
         }
       }
     }
@@ -465,6 +468,7 @@
 
     // ---- Card renderer (3D monster in UI boxes) ----
     const cardScenes = new Set();
+    const containerToCard = new Map();
     function ensureCard(container, mon, small=false){
       container.innerHTML = '';
       const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
@@ -502,6 +506,7 @@
 
       const entry = { r, scene, cam, model, mon };
       cardScenes.add(entry);
+      containerToCard.set(container, entry);
 
       // クリックで鳴き声
       r.domElement.addEventListener('pointerdown', ()=> playCry(mon));
@@ -622,23 +627,33 @@
       controls.update(); renderer.render(scene, camera);
 
       // Render small card scenes
-      cardScenes.forEach(({r, scene, cam})=>{ r.render(scene, cam); });
+      cardScenes.forEach((entry)=>{ if(entry.spin && entry.spin>0){ const step = 0.18; entry.model.rotation.y += step; entry.spin -= step; } entry.r.render(entry.scene, entry.cam); });
     })();
 
     // Helpers
     function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 
-    // ---- Audio（鳴き声） ----
+    // ---- Audio（鳴き声＆勝利ファンファーレ） ----
     let ACTX = null;
     function ensureAudio(){ if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } } if(ACTX?.state === 'suspended'){ ACTX.resume(); } }
-    function beep(freq=600, dur=0.12, type='triangle', vol=0.03){ if(!ACTX) return; const t=ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
+    function beep(freq=600, dur=0.12, type='triangle', vol=0.03, t0){ if(!ACTX) return; const t = t0 ?? ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
     function playCry(mon){ ensureAudio(); if(!ACTX) return; switch(mon.key){
-      case 'fluffin': beep(680,0.11,'triangle',0.03); setTimeout(()=>beep(920,0.09,'triangle',0.025),90); break;
-      case 'sparkid': beep(520,0.08,'square',0.025); setTimeout(()=>beep(1040,0.06,'square',0.02),70); break;
-      case 'mossie':  beep(600,0.1,'sine',0.02); setTimeout(()=>beep(760,0.12,'sine',0.02),110); break;
-      case 'embero':  beep(440,0.08,'sawtooth',0.02); setTimeout(()=>beep(660,0.08,'triangle',0.02),80); break;
-      case 'glacio':  beep(840,0.09,'sine',0.02); setTimeout(()=>beep(700,0.07,'sine',0.02),70); break;
+      case 'fluffin': beep(680,0.11,'triangle',0.03); beep(920,0.09,'triangle',0.025, ACTX.currentTime+0.09); break;
+      case 'sparkid': beep(520,0.08,'square',0.025); beep(1040,0.06,'square',0.02, ACTX.currentTime+0.07); break;
+      case 'mossie':  beep(600,0.1,'sine',0.02);  beep(760,0.12,'sine',0.02, ACTX.currentTime+0.11); break;
+      case 'embero':  beep(440,0.08,'sawtooth',0.02); beep(660,0.08,'triangle',0.02, ACTX.currentTime+0.08); break;
+      case 'glacio':  beep(840,0.09,'sine',0.02);  beep(700,0.07,'sine',0.02, ACTX.currentTime+0.07); break;
     } }
+    function playFanfare(){ ensureAudio(); if(!ACTX) return; const t = ACTX.currentTime; // 短いファンファーレ（約0.9s）
+      // 上昇アルペジオ + 着地
+      beep(784,0.18,'square',0.04,t);   // G5
+      beep(988,0.18,'square',0.04,t+0.16); // B5
+      beep(1175,0.22,'square',0.05,t+0.32); // D6
+      // 和音でキメ
+      beep(784,0.35,'triangle',0.03,t+0.54);
+      beep(988,0.35,'triangle',0.03,t+0.54);
+      beep(1175,0.35,'triangle',0.03,t+0.54);
+    }
 
     // 初回ユーザー操作でAudioContextを起動
     addEventListener('pointerdown', ensureAudio, { once: true });
