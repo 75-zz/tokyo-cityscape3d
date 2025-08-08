@@ -568,6 +568,7 @@
     async function loadAndBuild(){
       setStatus('OSM建物取得中…');
       showLoader(); setLoaderProgress(10);
+      setLoaderNote(navigator.onLine ? '' : 'オフラインの可能性があります…デモで開始も可');
       let sim = 10; const simTimer = setInterval(()=>{ sim = Math.min(sim+1, 70); setLoaderProgress(sim); }, 90);
       try{
         const data = await fetchBuildings(center[0], center[1], RADIUS_M);
@@ -577,7 +578,15 @@
         setLoaderProgress(100);
         setTimeout(hideLoader, 250);
       }
-      catch(err){ console.error(err); setStatus('取得失敗: ' + err.message); setLoaderProgress(100, 'エラー'); setTimeout(hideLoader, 800); }
+      catch(err){
+        console.error(err);
+        clearInterval(simTimer);
+        setStatus('取得失敗: ' + err.message);
+        setLoaderNote('混雑/ネット不安定の可能性。右下「デモで開始」を使えます。');
+        setLoaderProgress(100, 'エラー');
+        // ローダーは残したままにして、ユーザーが選べるようにする
+        return;
+      }
       // テーマ反映
       applyTimeOfDayTheme(true);
     }
