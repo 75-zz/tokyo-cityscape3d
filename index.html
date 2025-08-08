@@ -333,6 +333,9 @@
         }
       }
 
+      // 口（全員共通、前面に小さなリング）
+      const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.35, 8, 24), dark); mouth.rotation.x = Math.PI/2; mouth.position.set(0, 0.2, 7.2); g.add(mouth);
+
       // 足場リング
       const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
       ring.rotation.x = Math.PI/2; g.add(ring);
@@ -441,20 +444,49 @@
     function ensureCard(container, mon, small=false){
       container.innerHTML = '';
       const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
-      const cam = new THREE.PerspectiveCamera(35, container.clientWidth/container.clientHeight, 0.1, 1000);
-      cam.position.set(0, 0, 40);
+      const cam = new THREE.PerspectiveCamera(38, container.clientWidth/container.clientHeight, 0.01, 2000);
       const light = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(light);
-      const dlight = new THREE.DirectionalLight(0xffffff, .7); dlight.position.set(1,2,1); scene.add(dlight);
-      const model = makeMonsterModel(mon); model.position.y = -2; scene.add(model);
+      const dlight = new THREE.DirectionalLight(0xffffff, .8); dlight.position.set(1,2,1); scene.add(dlight);
+      const model = makeMonsterModel(mon);
+      scene.add(model);
+
+      // フィット：モデルのバウンディングボックスでカメラ距離と中心を調整
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3(); box.getSize(size);
+      const center = new THREE.Vector3(); box.getCenter(center);
+      model.position.sub(center); // 原点中心に
+      const vFov = THREE.MathUtils.degToRad(cam.fov);
+      const fitH = (size.y/2) / Math.tan(vFov/2);
+      const fitW = (size.x/2) / (Math.tan(vFov/2) * cam.aspect);
+      const dist = Math.max(fitH, fitW) * 1.35 + size.z*0.2;
+      cam.position.set(0, 0, dist);
+      cam.near = Math.max(0.01, dist/50); cam.far = dist*50; cam.updateProjectionMatrix();
+      cam.lookAt(0, 0, 0);
+
       const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
       r.setPixelRatio( Math.min(devicePixelRatio, 1.5) );
       r.setSize(container.clientWidth, container.clientHeight);
       container.appendChild(r.domElement);
-      const entry = { r, scene, cam, model };
+      const entry = { r, scene, cam, model, mon };
       cardScenes.add(entry);
+
+      // クリックで鳴き声
+      r.domElement.addEventListener('pointerdown', ()=> playCry(mon));
+
       // Resize observer
-      const ro = new ResizeObserver(()=>{ r.setSize(container.clientWidth, container.clientHeight); cam.aspect = container.clientWidth/container.clientHeight; cam.updateProjectionMatrix(); });
+      const ro = new ResizeObserver(()=>{
+        r.setSize(container.clientWidth, container.clientHeight);
+        cam.aspect = container.clientWidth/container.clientHeight; cam.updateProjectionMatrix();
+        const vFov = THREE.MathUtils.degToRad(cam.fov);
+        const fitH = (size.y/2) / Math.tan(vFov/2);
+        const fitW = (size.x/2) / (Math.tan(vFov/2) * cam.aspect);
+        const dist = Math.max(fitH, fitW) * 1.35 + size.z*0.2;
+        cam.position.set(0, 0, dist); cam.near=Math.max(0.01, dist/50); cam.far=dist*50; cam.updateProjectionMatrix();
+      });
       ro.observe(container);
+
+      // 初回だけ描画（回転なしの静止表示）
+      r.render(scene, cam);
     }
 
     // ---- Movement: keyboard & on-screen D-Pad ----
@@ -494,7 +526,7 @@
       mouse.x = ((e.clientX - rect.left)/rect.width)*2 - 1; mouse.y = -((e.clientY - rect.top)/rect.height)*2 + 1;
       raycaster.setFromCamera(mouse, camera);
       const hitsSpawn = raycaster.intersectObjects(spawns.children, true);
-      if(hitsSpawn.length){ const root = findSpawnGroup(hitsSpawn[0].object); if(root){ openBattle(root.userData.mon); } return; }
+      if(hitsSpawn.length){ const root = findSpawnGroup(hitsSpawn[0].object); if(root){ playCry(root.userData.mon); openBattle(root.userData.mon); } return; }
       const hitB = raycaster.intersectObjects(city.children, false)[0];
       if(hitB){ const tags = hitB.object.userData.tags || {}; const h = Math.round(hitB.object.userData.height); showTip(e.clientX, e.clientY, `${tags.name? tags.name + ' / ' : ''}高さ: ${h}m`); } else { hideTip(); }
     });
@@ -538,11 +570,26 @@
       controls.update(); renderer.render(scene, camera);
 
       // Render small card scenes
-      cardScenes.forEach(({r, scene, cam, model})=>{ model.rotation.y += 0.01; r.render(scene, cam); });
+      cardScenes.forEach(({r, scene, cam})=>{ r.render(scene, cam); });
     })();
 
     // Helpers
     function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+
+    // ---- Audio（鳴き声） ----
+    let ACTX = null;
+    function ensureAudio(){ if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } } if(ACTX?.state === 'suspended'){ ACTX.resume(); } }
+    function beep(freq=600, dur=0.12, type='triangle', vol=0.03){ if(!ACTX) return; const t=ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
+    function playCry(mon){ ensureAudio(); if(!ACTX) return; switch(mon.key){
+      case 'fluffin': beep(680,0.11,'triangle',0.03); setTimeout(()=>beep(920,0.09,'triangle',0.025),90); break;
+      case 'sparkid': beep(520,0.08,'square',0.025); setTimeout(()=>beep(1040,0.06,'square',0.02),70); break;
+      case 'mossie':  beep(600,0.1,'sine',0.02); setTimeout(()=>beep(760,0.12,'sine',0.02),110); break;
+      case 'embero':  beep(440,0.08,'sawtooth',0.02); setTimeout(()=>beep(660,0.08,'triangle',0.02),80); break;
+      case 'glacio':  beep(840,0.09,'sine',0.02); setTimeout(()=>beep(700,0.07,'sine',0.02),70); break;
+    } }
+
+    // 初回ユーザー操作でAudioContextを起動
+    addEventListener('pointerdown', ensureAudio, { once: true });
 
     // Boot
     loadAndBuild();
