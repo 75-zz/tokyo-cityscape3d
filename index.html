@@ -60,6 +60,15 @@
 
     /* 3D avatars in overlays */
     .c3d-battle, .c3d-result { width: 180px; height: 140px; border-radius: 12px; border:1px solid var(--btn-line); background:#fff; overflow:hidden; }
+
+    /* Loader */
+    #loader{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:20; background: radial-gradient(1200px 800px at 50% 40%, rgba(255,255,255,.9), rgba(246,247,251,.95)); }
+    #loader .box{ width:min(420px,88vw); background: var(--glass); border:1px solid var(--line); border-radius: 16px; padding: 16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); display:flex; flex-direction:column; align-items:center; gap:12px; }
+    #loader3d{ width: 200px; height: 160px; border-radius: 12px; border:1px solid var(--btn-line); background:#fff; overflow:hidden; }
+    .loadtext{ font: 600 14px/1.2 system-ui, "Noto Sans JP"; }
+    .bar{ width: 100%; height: 10px; border-radius: 8px; border:1px solid var(--btn-line); background: #fff; overflow:hidden; }
+    .bar > i{ display:block; height:100%; width:0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .pct{ font: 12px/1.2 system-ui; color:#4b5563; }
   </style>
   <script type="importmap">
     {
@@ -84,6 +93,16 @@
   <div id="hud">Pastel City Hunt｜データ: OpenStreetMap / Overpass API</div>
   <div id="tooltip"></div>
   <div id="warn"></div>
+
+  <!-- Loader Overlay -->
+  <div id="loader" class="overlay" style="display:flex">
+    <div class="box">
+      <div id="loader3d"></div>
+      <div class="loadtext">ロード中…</div>
+      <div class="bar"><i id="loadBarInner"></i></div>
+      <div class="pct" id="loadPct">0%</div>
+    </div>
+  </div>
 
   <!-- Mobile D-Pad -->
   <div id="pad">
@@ -202,7 +221,7 @@
     controls.maxDistance = 4000;
 
     // ライト
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const amb = new THREE.AmbientLight(0xffffff, 0.9); scene.add(amb);
     const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(800, 1500, 600); scene.add(sun);
 
     // 地面
@@ -210,7 +229,7 @@
     ground.rotation.x = -Math.PI / 2; ground.position.y = 0; scene.add(ground);
 
     // グリッド
-    const grid = new THREE.GridHelper(4000, 80, 0xbed2ff, 0xdee7ff); grid.position.y = 0.02; scene.add(grid);
+    let grid = new THREE.GridHelper(4000, 80, 0xbed2ff, 0xdee7ff); grid.position.y = 0.02; scene.add(grid);
 
     const city = new THREE.Group(); scene.add(city);
     const spawns = new THREE.Group(); scene.add(spawns);
@@ -238,7 +257,7 @@
     }
 
     // ---- Build meshes from OSM ----
-    function buildCityFromOSM(osm){
+    function buildCityFromOSM(osm, onProgress){
       city.clear(); spawns.clear();
       const nodes = new Map();
       for(const el of osm.elements){ if(el.type === 'node') nodes.set(el.id, el); }
@@ -251,6 +270,8 @@
         return 12 + Math.random()*40;
       }
 
+      let total=0; for(const el of osm.elements){ if(el.type==='way' && el.tags?.building) total++; }
+      let built=0;
       for(const el of osm.elements){
         if(el.type !== 'way' || !el.tags?.building) continue;
         const pts = [];
@@ -262,12 +283,15 @@
         const h = heightFromTags(el.tags);
         const geom = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
         geom.rotateX(-Math.PI/2); geom.computeVertexNormals();
-        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(palette[(Math.random()*palette.length)|0]), metalness: 0.05, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.05 });
-        const mesh = new THREE.Mesh(geom, mat); mesh.position.y = 0; mesh.castShadow = false; mesh.receiveShadow = false; mesh.userData = { tags: el.tags, height: h };
+        const baseColor = new THREE.Color(palette[(Math.random()*palette.length)|0]);
+        const mat = new THREE.MeshStandardMaterial({ color: baseColor.clone(), metalness: 0.05, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.05 });
+        const mesh = new THREE.Mesh(geom, mat); mesh.userData.baseColor = baseColor.clone(); mesh.position.y = 0; mesh.castShadow = false; mesh.receiveShadow = false; mesh.userData = { tags: el.tags, height: h };
         city.add(mesh);
+        built++; if(onProgress){ const p = 75 + Math.floor(25 * built / Math.max(1,total)); onProgress(p); }
       }
 
       spawnMonsters();
+      applyTimeOfDayTheme(true);
     }
 
     // ---- Monster models (more details) ----
@@ -414,7 +438,7 @@
       enemyHP = Math.max(0, enemyHP - dmg);
       enemyHPEl.textContent = enemyHP;
       battleLogEl.textContent = `${currentEnemy.name} に ${dmg} ダメージ！`;
-      if(enemyHP === 0){ playFanfare(); setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; } }
+      if(enemyHP === 0){ playFanfare(); setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; }
       const counter = randInt(3,8); myHP = Math.max(0, myHP - counter);
       battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`;
     });
@@ -543,8 +567,19 @@
     // ---- Load & build ----
     async function loadAndBuild(){
       setStatus('OSM建物取得中…');
-      try{ const data = await fetchBuildings(center[0], center[1], RADIUS_M); buildCityFromOSM(data); fitCamera(); setStatus('完了: ' + city.children.length + ' 棟 / スポーン: ' + spawns.children.length); }
-      catch(err){ console.error(err); setStatus('取得失敗: ' + err.message); }
+      showLoader(); setLoaderProgress(10);
+      let sim = 10; const simTimer = setInterval(()=>{ sim = Math.min(sim+1, 70); setLoaderProgress(sim); }, 90);
+      try{
+        const data = await fetchBuildings(center[0], center[1], RADIUS_M);
+        clearInterval(simTimer); setLoaderProgress(75);
+        buildCityFromOSM(data, (p)=> setLoaderProgress(p));
+        fitCamera(); setStatus('完了: ' + city.children.length + ' 棟 / スポーン: ' + spawns.children.length);
+        setLoaderProgress(100);
+        setTimeout(hideLoader, 250);
+      }
+      catch(err){ console.error(err); setStatus('取得失敗: ' + err.message); setLoaderProgress(100, 'エラー'); setTimeout(hideLoader, 800); }
+      // テーマ反映
+      applyTimeOfDayTheme(true);
     }
 
     function fitCamera(){ controls.target.set(0,0,0); camera.position.set(0, 540, 1100); controls.update(); }
@@ -596,7 +631,6 @@
       // Spawn anims
       const t = performance.now()/1000;
       spawns.children.forEach((g,i)=>{
-        // 徘徊AI：move と stop を繰り返す
         const w = g.userData.wander; if(w){
           w.t -= dt;
           if(w.t <= 0){
@@ -604,19 +638,12 @@
             else { w.state = 'move'; w.t = 1.2 + Math.random()*2.0; w.dir.set(Math.random()-0.5,0,Math.random()-0.5).normalize(); w.speed = 20 + Math.random()*25; }
           }
           if(w.state === 'move'){
-            const step = w.speed * dt;
-            g.position.x += w.dir.x * step;
-            g.position.z += w.dir.z * step;
-            // エリア外に出そうなら向きを変える
+            const step = w.speed * dt; g.position.x += w.dir.x * step; g.position.z += w.dir.z * step;
             if(Math.abs(g.position.x) > w.area || Math.abs(g.position.z) > w.area){ w.dir.multiplyScalar(-1); }
-            // 浮遊揺れ＋建物追従
-            g.position.y = 12 + Math.sin(t*1.6 + i)*1.5;
-            const top = getTopHeightAt(g.position.x, g.position.z) + 6; if(g.position.y < top) g.position.y = top;
-            // 進行方向に向ける
+            g.position.y = 12 + Math.sin(t*1.6 + i)*1.5; const top = getTopHeightAt(g.position.x, g.position.z) + 6; if(g.position.y < top) g.position.y = top;
             g.rotation.y = Math.atan2(w.dir.x, w.dir.z);
           }
         }
-        // 種族別アニメ
         const mon = g.userData.mon; const parts = g.userData.parts||{};
         if(mon?.key==='mossie' && parts.wingL && parts.wingR){ const a = Math.sin(t*6 + i)*0.5 + 0.6; parts.wingL.rotation.z =  1.1 + a*0.25; parts.wingR.rotation.z = -1.1 - a*0.25; }
         if(mon?.key==='sparkid' && parts.ant && parts.tip){ parts.ant.rotation.z = Math.sin(t*4 + i)*0.15; parts.tip.position.y = 11.5 + Math.sin(t*3 + i)*0.4; }
@@ -626,12 +653,53 @@
 
       controls.update(); renderer.render(scene, camera);
 
-      // Render small card scenes
+      // Render small card scenes + spin reactions
       cardScenes.forEach((entry)=>{ if(entry.spin && entry.spin>0){ const step = 0.18; entry.model.rotation.y += step; entry.spin -= step; } entry.r.render(entry.scene, entry.cam); });
+
+      // Loader 3D
+      if(loaderState.active){ renderLoader3D(); }
     })();
 
     // Helpers
     function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+
+    // ---- Time-of-day THEME (auto: 朝/昼/夕/夜) ----
+    let currentPhase = null;
+    function phaseFromDate(d){ const h = d.getHours();
+      if(h >= 5 && h < 9) return 'dawn';
+      if(h >= 9 && h < 17) return 'day';
+      if(h >= 17 && h < 19) return 'dusk';
+      return 'night';
+    }
+    const THEMES = {
+      dawn: { sky:'#f7f2ff', ground:'#eef4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xdecfff, grid2:0xeaf2ff,
+              ambI:0.9, sunI:0.7, sunC:'#ffd4a8', fogC:'#f0f4ff', fogN:2000, fogF:6000, bBright:1.05, bEmiss:'#ffffff', bEmissI:0.05 },
+      day:  { sky:'#f6f7fb', ground:'#f0f4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xbed2ff, grid2:0xdee7ff,
+              ambI:1.0, sunI:0.8, sunC:'#ffffff', fogC:null, fogN:0, fogF:0, bBright:1.0, bEmiss:'#ffffff', bEmissI:0.03 },
+      dusk: { sky:'#ffece1', ground:'#fff3e8', uiBg:'#fff5ef', uiInk:'#111827', grid1:0xffc9a9, grid2:0xffeedf,
+              ambI:0.7, sunI:0.6, sunC:'#ffb07a', fogC:'#ffe8d8', fogN:1800, fogF:5200, bBright:0.9, bEmiss:'#ffd9b6', bEmissI:0.06 },
+      night:{ sky:'#0b1220', ground:'#0f1524', uiBg:'#0f1524', uiInk:'#e5ecff', grid1:0x1f2a44, grid2:0x253252,
+              ambI:0.35, sunI:0.25, sunC:'#8fb5ff', fogC:'#0a1020', fogN:1200, fogF:4200, bBright:0.55, bEmiss:'#9fc6ff', bEmissI:0.12 }
+    };
+    function applyThemeToBuildings(th){ city.children.forEach(m=>{ if(!m.isMesh) return; const mat=m.material; const base=m.userData.baseColor||mat.color.clone(); mat.color.copy(base).multiplyScalar(th.bBright); mat.emissive.set(th.bEmiss); mat.emissiveIntensity = th.bEmissI; }); }
+    function rebuildGrid(th){ if(grid){ scene.remove(grid); grid.geometry.dispose(); if(Array.isArray(grid.material)){ grid.material.forEach(m=>m.dispose()); } else { grid.material.dispose?.(); } }
+      grid = new THREE.GridHelper(4000, 80, th.grid1, th.grid2); grid.position.y = 0.02; scene.add(grid); }
+    function applyTimeOfDayTheme(skipHud=false){ const ph = phaseFromDate(new Date()); if(ph===currentPhase) return; currentPhase = ph; const th = THEMES[ph];
+      // UI variables
+      document.documentElement.style.setProperty('--bg', th.uiBg);
+      document.documentElement.style.setProperty('--ink', th.uiInk);
+      // Scene
+      scene.background = new THREE.Color(th.sky);
+      if(th.fogC){ scene.fog = new THREE.Fog(th.fogC, th.fogN, th.fogF); } else { scene.fog = null; }
+      amb.intensity = th.ambI; sun.intensity = th.sunI; sun.color = new THREE.Color(th.sunC);
+      ground.material.color = new THREE.Color(th.ground);
+      rebuildGrid(th);
+      applyThemeToBuildings(th);
+      if(!skipHud) setStatus(`時間帯: ${ph === 'dawn' ? '朝' : ph === 'day' ? '昼' : ph === 'dusk' ? '夕' : '夜'}`);
+    }
+    // 自動更新（毎分）
+    setInterval(()=>applyTimeOfDayTheme(), 60*1000);
+    addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') applyTimeOfDayTheme(); });
 
     // ---- Audio（鳴き声＆勝利ファンファーレ） ----
     let ACTX = null;
@@ -658,7 +726,38 @@
     // 初回ユーザー操作でAudioContextを起動
     addEventListener('pointerdown', ensureAudio, { once: true });
 
+    // ---- Loader logic ----
+    let loaderState = { active:false, r:null, scene:null, cam:null, model:null };
+    const loaderEl = document.getElementById('loader');
+    const loader3d = document.getElementById('loader3d');
+    const loadBarInner = document.getElementById('loadBarInner');
+    const loadPct = document.getElementById('loadPct');
+
+    function showLoader(){
+      if(loaderState.active) return;
+      loaderEl.style.display = 'flex';
+      // 3D setup
+      const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
+      const cam = new THREE.PerspectiveCamera(35, loader3d.clientWidth/loader3d.clientHeight, 0.01, 2000);
+      cam.position.set(0,0,40);
+      const l1 = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(l1);
+      const l2 = new THREE.DirectionalLight(0xffffff, 0.8); l2.position.set(1,2,1); scene.add(l2);
+      const mon = MONS[(Math.random()*MONS.length)|0];
+      const model = makeMonsterModel(mon, { withRing:false }); scene.add(model);
+      const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
+      r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); r.setSize(loader3d.clientWidth, loader3d.clientHeight); loader3d.innerHTML=''; loader3d.appendChild(r.domElement);
+      loaderState = { active:true, r, scene, cam, model };
+      setLoaderProgress(10);
+      // Fit
+      const box = new THREE.Box3().setFromObject(model); const size = new THREE.Vector3(); box.getSize(size); const center = new THREE.Vector3(); box.getCenter(center);
+      model.position.sub(center); cam.lookAt(0,0,0);
+    }
+    function setLoaderProgress(p, label){ const v = Math.max(0, Math.min(100, Math.floor(p))); if(loadBarInner){ loadBarInner.style.width = v+'%'; } if(loadPct){ loadPct.textContent = (label? label+' ' : '') + v + '%'; } }
+    function renderLoader3D(){ if(!loaderState.active) return; loaderState.model.rotation.y += 0.06; loaderState.r.render(loaderState.scene, loaderState.cam); }
+    function hideLoader(){ if(!loaderState.active) return; loaderEl.style.display = 'none'; if(loaderState.r){ loaderState.r.dispose(); } loader3d.innerHTML=''; loaderState.active=false; }
+
     // Boot
+    applyTimeOfDayTheme(true);
     loadAndBuild();
   </script>
 </body>
