@@ -101,6 +101,8 @@
       <div class="loadtext">ロード中…</div>
       <div class="bar"><i id="loadBarInner"></i></div>
       <div class="pct" id="loadPct">0%</div>
+      <div class="pct" id="loadNote" style="margin-top:6px"></div>
+      <button class="btn" id="fallbackBtn" style="margin-top:8px">デモで開始（オフライン用）</button>
     </div>
   </div>
 
@@ -245,15 +247,39 @@
     function localXY(lon, lat, originLon, originLat){ const [ox, oy] = lonLatToMeters(originLon, originLat); const [x, y] = lonLatToMeters(lon, lat); return [x - ox, -(y - oy)]; }
 
     // ---- Overpass fetch ----
+    const OVERPASS_MIRRORS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://z.overpass-api.de/api/interpreter'
+    ];
+    async function fetchWithTimeout(url, options={}, timeoutMs=12000){
+      const ac = new AbortController(); const id = setTimeout(()=>ac.abort(new Error('timeout')), timeoutMs);
+      try{ const res = await fetch(url, { ...options, signal: ac.signal }); return res; } finally { clearTimeout(id); }
+    }
     async function fetchBuildings(lon, lat, radiusMeters){
       const dLat = (radiusMeters / 111320);
       const dLon = radiusMeters / (111320 * Math.cos(lat * DEG2RAD));
       const s = lat - dLat, w = lon - dLon, n = lat + dLat, e = lon + dLon;
-      const query = `\n[out:json][timeout:25];\n(\n  way["building"](${s},${w},${n},${e});\n  relation["building"](${s},${w},${n},${e});\n);\nout body;\n>;\nout skel qt;`;
-      const url = 'https://overpass-api.de/api/interpreter';
-      const res = await fetch(url, { method:'POST', body: query, headers: { 'Content-Type': 'text/plain' } });
-      if(!res.ok) throw new Error('Overpass API error ' + res.status);
-      return res.json();
+      const query = `
+[out:json][timeout:25];
+(
+  way["building"](${s},${w},${n},${e});
+  relation["building"](${s},${w},${n},${e});
+);
+out body;
+>;
+out skel qt;`;
+      let lastErr = null;
+      for(let i=0;i<OVERPASS_MIRRORS.length;i++){
+        const url = OVERPASS_MIRRORS[i];
+        setLoaderNote(`Overpassに接続中…（${i+1}/${OVERPASS_MIRRORS.length}）`);
+        try{
+          const res = await fetchWithTimeout(url, { method:'POST', body: query, headers: { 'Content-Type': 'text/plain' } }, 12000);
+          if(!res.ok) throw new Error('HTTP '+res.status);
+          return await res.json();
+        }catch(err){ lastErr = err; console.warn('Overpass try failed', url, err); }
+      }
+      throw new Error('Overpass APIに接続できませんでした: ' + (lastErr?.message||'unknown'));
     }
 
     // ---- Build meshes from OSM ----
@@ -582,10 +608,9 @@
         console.error(err);
         clearInterval(simTimer);
         setStatus('取得失敗: ' + err.message);
-        setLoaderNote('混雑/ネット不安定の可能性。右下「デモで開始」を使えます。');
+        setLoaderNote('混雑/ネット不安定の可能性。下の「デモで開始」を使えます。');
         setLoaderProgress(100, 'エラー');
-        // ローダーは残したままにして、ユーザーが選べるようにする
-        return;
+        return; // ローダーを出したまま
       }
       // テーマ反映
       applyTimeOfDayTheme(true);
@@ -741,6 +766,8 @@
     const loader3d = document.getElementById('loader3d');
     const loadBarInner = document.getElementById('loadBarInner');
     const loadPct = document.getElementById('loadPct');
+    const loadNote = document.getElementById('loadNote');
+    const fallbackBtn = document.getElementById('fallbackBtn');
 
     function showLoader(){
       if(loaderState.active) return;
@@ -762,12 +789,37 @@
       model.position.sub(center); cam.lookAt(0,0,0);
     }
     function setLoaderProgress(p, label){ const v = Math.max(0, Math.min(100, Math.floor(p))); if(loadBarInner){ loadBarInner.style.width = v+'%'; } if(loadPct){ loadPct.textContent = (label? label+' ' : '') + v + '%'; } }
+    function setLoaderNote(msg){ if(loadNote) loadNote.textContent = msg || ''; } if(loadPct){ loadPct.textContent = (label? label+' ' : '') + v + '%'; } }
     function renderLoader3D(){ if(!loaderState.active) return; loaderState.model.rotation.y += 0.06; loaderState.r.render(loaderState.scene, loaderState.cam); }
-    function hideLoader(){ if(!loaderState.active) return; loaderEl.style.display = 'none'; if(loaderState.r){ loaderState.r.dispose(); } loader3d.innerHTML=''; loaderState.active=false; }
+    function hideLoader(){ if(!loaderState.active) return; loaderEl.style.display = 'none'; if(loaderState.r){ loaderState.r.dispose(); } loader3d.innerHTML=''; loaderState.active=false; setLoaderNote(''); } loader3d.innerHTML=''; loaderState.active=false; }
 
     // Boot
     applyTimeOfDayTheme(true);
     loadAndBuild();
+
+    // ---- Demo fallback ----
+    function buildDemoCity(){
+      city.clear(); spawns.clear();
+      const rng = (a,b)=> a + Math.random()*(b-a);
+      for(let gx=-8; gx<=8; gx++){
+        for(let gz=-8; gz<=8; gz++){
+          if(Math.random()<0.2) continue;
+          const w = rng(20, 60), d = rng(20, 60), h = rng(10, 120);
+          const geom = new THREE.BoxGeometry(w, h, d);
+          const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.6+rng(-0.05,0.05), 0.25, 0.8), roughness:0.95, metalness:0.05, emissive:0xffffff, emissiveIntensity:0.03 });
+          const m = new THREE.Mesh(geom, mat);
+          m.position.set(gx*90 + rng(-10,10), h/2, gz*90 + rng(-10,10));
+          m.userData = { height: h, tags: { name: '' } };
+          city.add(m);
+        }
+      }
+      spawnMonsters(10);
+      fitCamera();
+      applyTimeOfDayTheme(true);
+      setStatus('デモモード（オフライン/Overpass不調）');
+      hideLoader();
+    }
+    fallbackBtn?.addEventListener('click', buildDemoCity);
   </script>
 </body>
 </html>
