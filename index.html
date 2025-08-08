@@ -26,7 +26,7 @@
     .space{ height:12px; }
     .title{ font: 600 16px/1.2 system-ui, "Noto Sans JP"; }
     .muted{ color:#4b5563; font-size:12px; }
-    .btn{ background:var(--btn); border:1px solid var(--btn-line); border-radius:10px; padding:8px 12px; cursor:pointer; }
+    olor:var(--ink); }
     .btn.primary{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border:none; }
     .btn.flat{ background:transparent; border: none; color:#1f2937; text-decoration: underline; }
     .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:12px; }
@@ -144,21 +144,7 @@
   <!-- Result Overlay -->
   <div id="result" class="overlay">
     <div class="sheet" style="text-align:center">
-      <div class="title">GET!!</div>
-      <div class="space"></div>
-      <div class="c3d-result" id="resultAvatar"></div>
-      <div class="space"></div>
-      <div><strong id="resultName">---</strong></div>
-      <div class="space"></div>
-      <button class="btn primary" id="keepBtn">図鑑に登録</button>
-      <button class="btn" id="continueBtn">つづける</button>
-    </div>
-  </div>
-
-  <!-- Dex Overlay -->
-  <div id="dexOverlay" class="overlay">
-    <div class="sheet">
-      <div class="row"><div class="title">図鑑</div><div style="flex:1"></div><button class="btn flat" id="closeDex">閉じる</button></div>
+      <dv style="flex:1"></div><button class="btn flat" id="closeDex">閉じる</button></div>
       <div class="space"></div>
       <div id="dexGrid" class="grid"></div>
     </div>
@@ -709,21 +695,13 @@ out skel qt;`;
     }
     const THEMES = {
       dawn: { sky:'#f7f2ff', ground:'#eef4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xdecfff, grid2:0xeaf2ff,
-              ambI:0.9, sunI:0.7, sunC:'#ffd4a8', fogC:'#f0f4ff', fogN:2000, fogF:6000, bBright:1.05, bEmiss:'#ffffff', bEmissI:0.05 },
+              ambI:0.9, sunI:0.7, sunC:'#ffd4a8', fogC:'#f0f4ff', fogN:2000, fogF:6000, bBright:1.05, bEmiss:'#ffffff', bEmissI:0.05, btn:'#ffffff', btnLine:'#d7dce6', glass:'rgba(255,255,255,.7)' },
       day:  { sky:'#f6f7fb', ground:'#f0f4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xbed2ff, grid2:0xdee7ff,
-              ambI:1.0, sunI:0.8, sunC:'#ffffff', fogC:null, fogN:0, fogF:0, bBright:1.0, bEmiss:'#ffffff', bEmissI:0.03 },
+              ambI:1.0, sunI:0.8, sunC:'#ffffff', fogC:null, fogN:0, fogF:0, bBright:1.0, bEmiss:'#ffffff', bEmissI:0.03, btn:'#ffffff', btnLine:'#d7dce6', glass:'rgba(255,255,255,.7)' },
       dusk: { sky:'#ffece1', ground:'#fff3e8', uiBg:'#fff5ef', uiInk:'#111827', grid1:0xffc9a9, grid2:0xffeedf,
-              ambI:0.7, sunI:0.6, sunC:'#ffb07a', fogC:'#ffe8d8', fogN:1800, fogF:5200, bBright:0.9, bEmiss:'#ffd9b6', bEmissI:0.06 },
+              ambI:0.7, sunI:0.6, sunC:'#ffb07a', fogC:'#ffe8d8', fogN:1800, fogF:5200, bBright:0.9, bEmiss:'#ffd9b6', bEmissI:0.06, btn:'#fff7f0', btnLine:'#ffd9b6', glass:'rgba(255,245,239,.7)' },
       night:{ sky:'#0b1220', ground:'#0f1524', uiBg:'#0f1524', uiInk:'#e5ecff', grid1:0x1f2a44, grid2:0x253252,
-              ambI:0.35, sunI:0.25, sunC:'#8fb5ff', fogC:'#0a1020', fogN:1200, fogF:4200, bBright:0.55, bEmiss:'#9fc6ff', bEmissI:0.12 }
-    };
-    function applyThemeToBuildings(th){ city.children.forEach(m=>{ if(!m.isMesh) return; const mat=m.material; const base=m.userData.baseColor||mat.color.clone(); mat.color.copy(base).multiplyScalar(th.bBright); mat.emissive.set(th.bEmiss); mat.emissiveIntensity = th.bEmissI; }); }
-    function rebuildGrid(th){ if(grid){ scene.remove(grid); grid.geometry.dispose(); if(Array.isArray(grid.material)){ grid.material.forEach(m=>m.dispose()); } else { grid.material.dispose?.(); } }
-      grid = new THREE.GridHelper(4000, 80, th.grid1, th.grid2); grid.position.y = 0.02; scene.add(grid); }
-    function applyTimeOfDayTheme(skipHud=false){ const ph = phaseFromDate(new Date()); if(ph===currentPhase) return; currentPhase = ph; const th = THEMES[ph];
-      // UI variables
-      document.documentElement.style.setProperty('--bg', th.uiBg);
-      document.documentElement.style.setProperty('--ink', th.uiInk);
+              ambI:0.35, sunI:0.25, sunC:'#8fb5ff', fogC:'#0a102ement.style.setProperty('--ink', th.uiInk);
       // Scene
       scene.background = new THREE.Color(th.sky);
       if(th.fogC){ scene.fog = new THREE.Fog(th.fogC, th.fogN, th.fogF); } else { scene.fog = null; }
@@ -742,13 +720,11 @@ out skel qt;`;
     function ensureAudio(){ if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } } if(ACTX?.state === 'suspended'){ ACTX.resume(); } }
     function beep(freq=600, dur=0.12, type='triangle', vol=0.03, t0){ if(!ACTX) return; const t = t0 ?? ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
     function playCry(mon){ ensureAudio(); if(!ACTX) return; switch(mon.key){
-      case 'fluffin': beep(680,0.11,'triangle',0.03); beep(920,0.09,'triangle',0.025, ACTX.currentTime+0.09); break;
-      case 'sparkid': beep(520,0.08,'square',0.025); beep(1040,0.06,'square',0.02, ACTX.currentTime+0.07); break;
-      case 'mossie':  beep(600,0.1,'sine',0.02);  beep(760,0.12,'sine',0.02, ACTX.currentTime+0.11); break;
-      case 'embero':  beep(440,0.08,'sawtooth',0.02); beep(660,0.08,'triangle',0.02, ACTX.currentTime+0.08); break;
-      case 'glacio':  beep(840,0.09,'sine',0.02);  beep(700,0.07,'sine',0.02, ACTX.currentTime+0.07); break;
-    } }
-    function playFanfare(){ ensureAudio(); if(!ACTX) return; const t = ACTX.currentTime; // 短いファンファーレ（約0.9s）
+      case 'fluffin': beep(680,0.11,'triangle',0.03); beep(920,0.09,'triangle',0.025, ACdocument.documentElement.style.setProperty('--bg', th.uiBg);
+      document.documentElement.style.setProperty('--ink', th.uiInk);
+      document.documentElement.style.setProperty('--btn', th.btn);
+      document.documentElement.style.setProperty('--btn-line', th.btnLine);
+      document.documentElement.style.setProperty('--glass',fare(){ ensureAudio(); if(!ACTX) return; const t = ACTX.currentTime; // 短いファンファーレ（約0.9s）
       // 上昇アルペジオ + 着地
       beep(784,0.18,'square',0.04,t);   // G5
       beep(988,0.18,'square',0.04,t+0.16); // B5
@@ -759,69 +735,3 @@ out skel qt;`;
       beep(1175,0.35,'triangle',0.03,t+0.54);
     }
 
-    // 初回ユーザー操作でAudioContextを起動
-    addEventListener('pointerdown', ensureAudio, { once: true });
-
-    // ---- Loader logic ----
-    // 既に上で loaderState を宣言済み（TDZ回避用）。ここでは代入のみ。
-    const loaderEl = document.getElementById('loader');
-    const loader3d = document.getElementById('loader3d');
-    const loadBarInner = document.getElementById('loadBarInner');
-    const loadPct = document.getElementById('loadPct');
-    const loadNote = document.getElementById('loadNote');
-    const fallbackBtn = document.getElementById('fallbackBtn');
-
-    function showLoader(){
-      if(loaderState.active) return;
-      loaderEl.style.display = 'flex';
-      // 3D setup
-      const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
-      const cam = new THREE.PerspectiveCamera(35, loader3d.clientWidth/loader3d.clientHeight, 0.01, 2000);
-      cam.position.set(0,0,40);
-      const l1 = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(l1);
-      const l2 = new THREE.DirectionalLight(0xffffff, 0.8); l2.position.set(1,2,1); scene.add(l2);
-      const mon = MONS[(Math.random()*MONS.length)|0];
-      const model = makeMonsterModel(mon, { withRing:false }); scene.add(model);
-      const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
-      r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); r.setSize(loader3d.clientWidth, loader3d.clientHeight); loader3d.innerHTML=''; loader3d.appendChild(r.domElement);
-      loaderState = { active:true, r, scene, cam, model };
-      setLoaderProgress(10);
-      // Fit
-      const box = new THREE.Box3().setFromObject(model); const center = new THREE.Vector3(); box.getCenter(center);
-      model.position.sub(center); cam.lookAt(0,0,0);
-    }
-    function setLoaderProgress(p, label){ const v = Math.max(0, Math.min(100, Math.floor(p))); if(loadBarInner){ loadBarInner.style.width = v+'%'; } if(loadPct){ loadPct.textContent = (label? label+' ' : '') + v + '%'; } }
-    function setLoaderNote(msg){ if(loadNote) loadNote.textContent = msg || ''; }
-    function renderLoader3D(){ if(!loaderState.active) return; loaderState.model.rotation.y += 0.06; loaderState.r.render(loaderState.scene, loaderState.cam); }
-    function hideLoader(){ if(!loaderState.active) return; loaderEl.style.display = 'none'; if(loaderState.r){ loaderState.r.dispose(); } loader3d.innerHTML=''; loaderState.active=false; setLoaderNote(''); }
-
-    // Boot
-    applyTimeOfDayTheme(true);
-    loadAndBuild();
-
-    // ---- Demo fallback ----
-    function buildDemoCity(){
-      city.clear(); spawns.clear();
-      const rng = (a,b)=> a + Math.random()*(b-a);
-      for(let gx=-8; gx<=8; gx++){
-        for(let gz=-8; gz<=8; gz++){
-          if(Math.random()<0.2) continue;
-          const w = rng(20, 60), d = rng(20, 60), h = rng(10, 120);
-          const geom = new THREE.BoxGeometry(w, h, d);
-          const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.6+rng(-0.05,0.05), 0.25, 0.8), roughness:0.95, metalness:0.05, emissive:0xffffff, emissiveIntensity:0.03 });
-          const m = new THREE.Mesh(geom, mat);
-          m.position.set(gx*90 + rng(-10,10), h/2, gz*90 + rng(-10,10));
-          m.userData = { height: h, tags: { name: '' } };
-          city.add(m);
-        }
-      }
-      spawnMonsters(10);
-      fitCamera();
-      applyTimeOfDayTheme(true);
-      setStatus('デモモード（オフライン/Overpass不調）');
-      hideLoader();
-    }
-    fallbackBtn?.addEventListener('click', buildDemoCity);
-  </script>
-</body>
-</html>
