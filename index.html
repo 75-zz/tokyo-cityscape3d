@@ -34,10 +34,29 @@
     .card .c3d{ width: 140px; height: 110px; border-radius: 10px; overflow: hidden; border:1px solid var(--btn-line); background: #fff; }
 
     /* Mobile D-Pad */
-    #pad { position: fixed; left: 12px; bottom: 12px; width: 120px; height: 120px; z-index: 6; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; opacity: .95; }
-    .padbtn { background: var(--glass); border:1px solid var(--btn-line); border-radius: 12px; touch-action: none; user-select: none; height: 36px; display:flex; align-items:center; justify-content:center; font: 600 14px/1 system-ui; }
+    #pad { position: fixed; z-index: 6; display: none; /* デスクトップでは非表示 */ }
+    .padbtn { background: var(--glass); border:1px solid var(--btn-line); border-radius: 12px; touch-action: none; user-select: none; display:flex; align-items:center; justify-content:center; font: 600 14px/1 system-ui; }
     .padbtn:active{ filter: brightness(.96); }
     .padbtn.empty{ visibility: hidden; }
+
+    /* スマホ系だけ表示＆安全領域にフィット */
+    @media (hover: none) and (pointer: coarse) {
+      #pad { 
+        right: calc(12px + env(safe-area-inset-right));
+        bottom: calc(12px + env(safe-area-inset-bottom));
+        left: auto;
+        width: 160px; height: 160px;
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; opacity: .96;
+      }
+      .padbtn { height: 48px; font-size: 16px; }
+    }
+
+    /* 横向きのときは少しコンパクトに */
+    @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+      #pad { width: 140px; height: 140px; gap: 8px; }
+      .padbtn { height: 42px; font-size: 15px; }
+    }
+
 
     /* 3D avatars in overlays */
     .c3d-battle, .c3d-result { width: 180px; height: 140px; border-radius: 12px; border:1px solid var(--btn-line); background:#fff; overflow:hidden; }
@@ -381,9 +400,9 @@
     function openBattle(mon){
       currentEnemy = mon; enemyHP = 20 + Math.floor(Math.random()*15); myHP = 30;
       enemyNameEl.textContent = mon.name; enemyHPEl.textContent = enemyHP;
+      battleEl.style.display = 'flex'; // 先に表示してからサイズ計測
       ensureCard(enemyAvatar, mon);
       battleLogEl.textContent = '野生の ' + mon.name + ' があらわれた！';
-      battleEl.style.display = 'flex';
     }
 
     function closeBattleUI(){ battleEl.style.display = 'none'; }
@@ -409,7 +428,11 @@
     const continueBtn = document.getElementById('continueBtn');
     let captured = null;
 
-    function openResult(mon){ captured = mon; resultName.textContent = mon.name; ensureCard(resultAvatar, mon); resultEl.style.display='flex'; }
+    function openResult(mon){
+      captured = mon; resultName.textContent = mon.name;
+      resultEl.style.display='flex'; // 先に表示
+      ensureCard(resultAvatar, mon);
+    }
     keepBtn?.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
     continueBtn?.addEventListener('click', ()=>{ resultEl.style.display='none'; });
 
@@ -423,6 +446,7 @@
     function addToDex(mon){ const list = loadDex(); list.push({ key: mon.key, name: mon.name, color: mon.color, ts: Date.now() }); saveDex(list); showDex(); }
     function showDex(){
       const list = loadDex(); dexGrid.innerHTML = '';
+      dexOverlay.style.display='flex'; // 先に表示
       if(list.length===0){ dexGrid.innerHTML = '<div class="muted">まだ何も捕まえていません。</div>'; }
       else{
         for(const it of list){
@@ -434,7 +458,6 @@
           ensureCard(c, it, true);
         }
       }
-      dexOverlay.style.display='flex';
     }
     closeDexBtn?.addEventListener('click', ()=> dexOverlay.style.display='none');
     document.getElementById('dex').addEventListener('click', showDex);
@@ -444,17 +467,30 @@
     function ensureCard(container, mon, small=false){
       container.innerHTML = '';
       const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
-      const cam = new THREE.PerspectiveCamera(38, container.clientWidth/container.clientHeight, 0.01, 2000);
+      const cam = new THREE.PerspectiveCamera(38, 1, 0.01, 2000);
       const light = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(light);
       const dlight = new THREE.DirectionalLight(0xffffff, .8); dlight.position.set(1,2,1); scene.add(dlight);
       const model = makeMonsterModel(mon);
       scene.add(model);
 
-      // フィット：モデルのバウンディングボックスでカメラ距離と中心を調整
+      const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
+      const getSize = ()=>{
+        const cs = getComputedStyle(container);
+        const w = Math.max(1, container.clientWidth || parseFloat(cs.width) || (small?140:180));
+        const h = Math.max(1, container.clientHeight || parseFloat(cs.height) || (small?110:140));
+        return [w|0, h|0];
+      };
+      let [w,h] = getSize();
+      r.setPixelRatio( Math.min(devicePixelRatio, 1.5) );
+      r.setSize(w, h);
+      container.appendChild(r.domElement);
+
+      // フィット
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3(); box.getSize(size);
       const center = new THREE.Vector3(); box.getCenter(center);
-      model.position.sub(center); // 原点中心に
+      model.position.sub(center);
+      cam.aspect = w / h; cam.updateProjectionMatrix();
       const vFov = THREE.MathUtils.degToRad(cam.fov);
       const fitH = (size.y/2) / Math.tan(vFov/2);
       const fitW = (size.x/2) / (Math.tan(vFov/2) * cam.aspect);
@@ -463,10 +499,6 @@
       cam.near = Math.max(0.01, dist/50); cam.far = dist*50; cam.updateProjectionMatrix();
       cam.lookAt(0, 0, 0);
 
-      const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
-      r.setPixelRatio( Math.min(devicePixelRatio, 1.5) );
-      r.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(r.domElement);
       const entry = { r, scene, cam, model, mon };
       cardScenes.add(entry);
 
@@ -475,17 +507,17 @@
 
       // Resize observer
       const ro = new ResizeObserver(()=>{
-        r.setSize(container.clientWidth, container.clientHeight);
-        cam.aspect = container.clientWidth/container.clientHeight; cam.updateProjectionMatrix();
+        [w,h] = getSize(); r.setSize(w,h); cam.aspect = w/h; cam.updateProjectionMatrix();
         const vFov = THREE.MathUtils.degToRad(cam.fov);
         const fitH = (size.y/2) / Math.tan(vFov/2);
         const fitW = (size.x/2) / (Math.tan(vFov/2) * cam.aspect);
         const dist = Math.max(fitH, fitW) * 1.35 + size.z*0.2;
         cam.position.set(0, 0, dist); cam.near=Math.max(0.01, dist/50); cam.far=dist*50; cam.updateProjectionMatrix();
+        r.render(scene, cam);
       });
       ro.observe(container);
 
-      // 初回だけ描画（回転なしの静止表示）
+      // 初回だけ描画
       r.render(scene, cam);
     }
 
