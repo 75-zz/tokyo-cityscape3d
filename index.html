@@ -447,7 +447,7 @@ out skel qt;`;
     const hud = document.getElementById('hud');
     function setStatus(msg){ hud.textContent = `Pastel City Hunt｜${msg}`; }
 
-    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); }); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); });
+    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); resizeConfetti(); });
 
     // 先にローダー状態を宣言
     let loaderState = { active:false, r:null, scene:null, cam:null, model:null };
@@ -489,7 +489,7 @@ out skel qt;`;
     // user-gesture unlock (once)
     function __unlockAudio(){ ensureAudio(); window.removeEventListener('pointerdown', __unlockAudio); window.removeEventListener('keydown', __unlockAudio); }
     window.addEventListener('pointerdown', __unlockAudio, {once:true});
-    window.addEventListener('keydown', __unlockAudio, {once:true});{ ensureAudio(); if(!ACTX) return; const t=ACTX.currentTime; beep(880,0.06,'sine',0.02,t); beep(660,0.06,'sine',0.02,t+0.06); }
+    window.addEventListener('keydown', __unlockAudio, {once:true});
 
     // "ゴージャス" BGM for celebration
     function playCelebrationBGM(level){ ensureAudio(); if(!ACTX) return; stopBGM(); const t=ACTX.currentTime; const base = 392; // G4
@@ -525,6 +525,8 @@ out skel qt;`;
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore();
       }
       if(now>confettiUntil){ confetti.length=0; }
+    }
+if(now>confettiUntil){ confetti.length=0; }
     } ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore(); } if(now>confettiUntil){ confetti.length=0; } }
 
     // ---- Celebration overlay ----
