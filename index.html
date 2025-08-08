@@ -3,20 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tokyo 3D (Free, OSM + Overpass + Three.js)</title>
+  <title>Tokyo 3D — Pastel City Hunt (OSM + Three.js)</title>
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f14; }
+    :root{
+      --bg:#f6f7fb; --ink:#0b0f14; --glass:rgba(255,255,255,.7); --line:rgba(0,0,0,.08);
+      --btn:#ffffff; --btn-line:#d7dce6; --accent:#6aa9ff; --accent2:#ff9ecb; --accent3:#88e1a1;
+    }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); }
     #app { position: fixed; inset: 0; }
-    #hud { position: fixed; left: 12px; bottom: 12px; color: #d9e3f0; font: 12px/1.4 system-ui, "Noto Sans JP", sans-serif; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); padding: 8px 10px; border-radius: 8px; user-select: none; }
-    #ui { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 3; }
-    #ui button { background:#111826; color:#d9e3f0; border:1px solid #334155; padding:6px 10px; border-radius:8px; cursor:pointer; font:12px/1.2 system-ui; }
-    #ui button:hover{ background:#1f2937; }
-    #tooltip { position: fixed; pointer-events:none; color:#fff; background:rgba(0,0,0,.65); padding:6px 8px; border-radius:6px; font:12px/1.3 system-ui; transform: translate(-50%,-130%); opacity:0; transition:opacity .12s; }
-    #warn { position: fixed; inset: 12px 12px auto 12px; background: #111827; color: #e5e7eb; border: 1px solid #374151; padding: 10px 12px; border-radius: 10px; font: 12px/1.5 system-ui, "Noto Sans JP", sans-serif; z-index: 5; display:none; }
-    #warn strong { color:#93c5fd; }
-    a { color:#8cd1ff; }
+    #hud { position: fixed; left: 12px; bottom: 12px; color: var(--ink); font: 12px/1.4 system-ui, "Noto Sans JP", sans-serif; background: var(--glass); border: 1px solid var(--line); padding: 8px 10px; border-radius: 10px; user-select: none; backdrop-filter: blur(8px); }
+    #ui { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 5; }
+    #ui button { background:var(--btn); color:var(--ink); border:1px solid var(--btn-line); padding:8px 12px; border-radius:10px; cursor:pointer; font:12px/1.2 system-ui; box-shadow: 0 1px 0 rgba(0,0,0,.03); }
+    #ui button:hover{ filter: brightness(0.98); }
+    #tooltip { position: fixed; pointer-events:none; color:var(--ink); background:var(--glass); padding:6px 8px; border-radius:8px; font:12px/1.3 system-ui; transform: translate(-50%,-130%); opacity:0; transition:opacity .12s; border:1px solid var(--line); backdrop-filter: blur(8px); }
+    #warn { position: fixed; inset: 12px 12px auto 12px; background: var(--glass); color: var(--ink); border: 1px solid var(--line); padding: 10px 12px; border-radius: 12px; font: 12px/1.5 system-ui, "Noto Sans JP", sans-serif; z-index: 6; display:none; backdrop-filter: blur(8px); }
+    #warn strong { color:#4c8dff; }
+
+    /* Overlays */
+    .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10; }
+    .sheet{ width:min(560px, 92vw); background:var(--glass); border:1px solid var(--line); border-radius:16px; padding:16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); }
+    .row{ display:flex; gap:12px; align-items:center; }
+    .space{ height:12px; }
+    .title{ font: 600 16px/1.2 system-ui, "Noto Sans JP"; }
+    .muted{ color:#4b5563; font-size:12px; }
+    .btn{ background:var(--btn); border:1px solid var(--btn-line); border-radius:10px; padding:8px 12px; cursor:pointer; }
+    .btn.primary{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border:none; }
+    .btn.flat{ background:transparent; border: none; color:#1f2937; text-decoration: underline; }
+    .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap:12px; }
+    .card{ background:var(--btn); border:1px solid var(--btn-line); border-radius:12px; padding:10px; text-align:center; }
   </style>
-  <!-- Import Map: bare specifiers をCDNに解決させる -->
   <script type="importmap">
     {
       "imports": {
@@ -34,32 +49,70 @@
     <button data-spot="shibuya">渋谷</button>
     <button data-spot="odaiba">お台場</button>
     <button id="refresh">再取得</button>
+    <button id="spawn">新規スポーン</button>
+    <button id="dex">図鑑</button>
   </div>
-  <div id="hud">データ: OpenStreetMap（Overpass API）/ クリックで高さ表示 / 無料で動作（要: 公開負荷配慮）</div>
+  <div id="hud">Pastel City Hunt｜データ: OpenStreetMap / Overpass API</div>
   <div id="tooltip"></div>
   <div id="warn"></div>
 
+  <!-- Battle Overlay -->
+  <div id="battle" class="overlay">
+    <div class="sheet">
+      <div class="row"><div class="title">バトル開始！</div><div style="flex:1"></div><button class="btn flat" id="closeBattle">閉じる</button></div>
+      <div class="space"></div>
+      <div class="row">
+        <div id="enemyAvatar" style="width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg,var(--accent2),#ffd6e8);"></div>
+        <div style="flex:1">
+          <div><strong id="enemyName">???</strong></div>
+          <div class="muted">HP: <span id="enemyHP">--</span></div>
+          <div class="space"></div>
+          <div class="row">
+            <button class="btn primary" id="attackBtn">こうげき</button>
+            <button class="btn" id="runBtn">にげる</button>
+          </div>
+        </div>
+      </div>
+      <div class="space"></div>
+      <div class="muted" id="battleLog">…</div>
+    </div>
+  </div>
+
+  <!-- Result Overlay -->
+  <div id="result" class="overlay">
+    <div class="sheet" style="text-align:center">
+      <div class="title">GET!!</div>
+      <div class="space"></div>
+      <div id="resultAvatar" style="width:160px;height:160px;margin:0 auto;border-radius:18px;background:linear-gradient(135deg,var(--accent3),#d2f5dd);"></div>
+      <div class="space"></div>
+      <div><strong id="resultName">---</strong></div>
+      <div class="space"></div>
+      <button class="btn primary" id="keepBtn">図鑑に登録</button>
+      <button class="btn" id="continueBtn">つづける</button>
+    </div>
+  </div>
+
+  <!-- Dex Overlay -->
+  <div id="dexOverlay" class="overlay">
+    <div class="sheet">
+      <div class="row"><div class="title">図鑑</div><div style="flex:1"></div><button class="btn flat" id="closeDex">閉じる</button></div>
+      <div class="space"></div>
+      <div id="dexGrid" class="grid"></div>
+    </div>
+  </div>
+
   <script>
-    // 実行ヒント（file:// 直開きや importmap 非対応のブラウザに注意喚起）
+    // 注意喚起
     (function(){
       const warn = document.getElementById('warn');
-      const importMapSupported = (function(){
-        const s = document.createElement('script');
-        return 'supports' in HTMLScriptElement && HTMLScriptElement.supports('importmap');
-      })();
+      const importMapSupported = ('supports' in HTMLScriptElement && HTMLScriptElement.supports('importmap'));
       let msgs = [];
       if (location.protocol === 'file:') {
-        msgs.push('現在 <strong>file://</strong> で開いています。ブラウザや環境によっては動作しないことがあります。<br>うまくいかない場合は、<code>python -m http.server</code> などでローカルサーバ経由（http://localhost:8000）で開いてください。');
+        msgs.push('現在 <strong>file://</strong> で開いています。環境によっては動作しないことがあります。<br>うまくいかない場合は、<code>python -m http.server</code> 等で http://localhost:8000 から開いてください。');
       }
-      if (!importMapSupported) {
-        msgs.push('このブラウザは <strong>importmap</strong> に対応していない可能性があります。Chrome/Edge/Firefox の最新を推奨。');
-      }
-      msgs.push('このアプリは <strong>インターネット接続</strong> と <strong>Overpass API</strong> へのアクセスが必要です。');
-      if (msgs.length) {
-        warn.innerHTML = msgs.join('<hr style="border:none;border-top:1px solid #374151;margin:8px 0">');
-        warn.style.display = 'block';
-        setTimeout(()=>warn.style.display='none', 8000);
-      }
+      if (!importMapSupported) msgs.push('このブラウザは <strong>importmap</strong> に対応していない可能性があります。最新ブラウザを推奨。');
+      msgs.push('このアプリは <strong>インターネット接続</strong> と <strong>Overpass API</strong> が必要です。');
+      if (msgs.length) { warn.innerHTML = msgs.join('<hr style="border:none;border-top:1px solid var(--line);margin:8px 0">'); warn.style.display='block'; setTimeout(()=>warn.style.display='none', 8000); }
     })();
   </script>
 
@@ -68,29 +121,39 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
     // ---- Config ----
-    const RADIUS_M = 800; // 取得半径（m）…大きくしすぎると重い＆API負荷
+    const RADIUS_M = 800; // OSMの取得半径
     const CENTER_PRESETS = {
       tokyo:   [139.767125, 35.681236], // 東京駅
       shinjuku:[139.700556, 35.689722],
       shibuya: [139.702148, 35.659516],
       odaiba:  [139.775,    35.625]
     };
-
     let center = CENTER_PRESETS.tokyo.slice();
+
+    // モンスター定義（IPを避けたオリジナル）
+    const MONS = [
+      { key:'fluffin', name:'フラッフィン', color:'#ffd1e6', power:[8,14] },
+      { key:'sparkid', name:'スパーキッド', color:'#cfe6ff', power:[10,16] },
+      { key:'mossie',  name:'モッシー',     color:'#dff6df', power:[7,12] },
+      { key:'embero',  name:'エンベロ',     color:'#ffe3c3', power:[9,15] },
+      { key:'glacio',  name:'グラシオ',     color:'#e6f3ff', power:[11,17] }
+    ];
 
     // ---- Three.js setup ----
     const container = document.getElementById('app');
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0f14);
+    // パステルの空
+    const bgGrad = new THREE.Color('#f6f7fb');
+    scene.background = bgGrad;
 
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 8000);
-    camera.position.set(0, 600, 1200);
+    camera.position.set(0, 540, 1100);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -98,27 +161,24 @@
     controls.minDistance = 50;
     controls.maxDistance = 4000;
 
-    scene.add(new THREE.AmbientLight(0x8899aa, 0.8));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    // ライトもパステル寄り
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
     sun.position.set(800, 1500, 600);
     scene.add(sun);
 
-    // ground
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(4000, 4000),
-      new THREE.MeshStandardMaterial({ color: 0x0e141b, roughness: 1 })
-    );
+    // ground（明るめ）
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: 0xf0f4ff, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0;
     scene.add(ground);
 
-    // helpers
-    const grid = new THREE.GridHelper(4000, 80, 0x203040, 0x142230);
-    grid.position.y = 0.02;
-    scene.add(grid);
+    // 柔らかいグリッド
+    const grid = new THREE.GridHelper(4000, 80, 0xbed2ff, 0xdee7ff);
+    grid.position.y = 0.02; scene.add(grid);
 
-    const city = new THREE.Group();
-    scene.add(city);
+    const city = new THREE.Group(); scene.add(city);
+    const spawns = new THREE.Group(); scene.add(spawns);
 
     // Tooltip & raycaster
     const tooltip = document.getElementById('tooltip');
@@ -126,30 +186,17 @@
     const mouse = new THREE.Vector2();
     let highlighted = null, origMat = null;
 
-    // ---- Utils: WebMercator (EPSG:3857-ish) ----
-    const DEG2RAD = Math.PI / 180;
-    const R = 6378137;
-    function lonLatToMeters(lon, lat){
-      const x = R * lon * DEG2RAD;
-      const y = R * Math.log(Math.tan(Math.PI/4 + (lat*DEG2RAD)/2));
-      return [x, y];
-    }
-    function localXY(lon, lat, originLon, originLat){
-      const [ox, oy] = lonLatToMeters(originLon, originLat);
-      const [x, y] = lonLatToMeters(lon, lat);
-      // Three.js平面上: x→東, z→南（yが高さ）
-      return [x - ox, -(y - oy)];
-    }
+    // ---- Utils: WebMercator ----
+    const DEG2RAD = Math.PI / 180; const R = 6378137;
+    function lonLatToMeters(lon, lat){ const x = R * lon * DEG2RAD; const y = R * Math.log(Math.tan(Math.PI/4 + (lat*DEG2RAD)/2)); return [x, y]; }
+    function localXY(lon, lat, originLon, originLat){ const [ox, oy] = lonLatToMeters(originLon, originLat); const [x, y] = lonLatToMeters(lon, lat); return [x - ox, -(y - oy)]; }
 
     // ---- Overpass fetch ----
     async function fetchBuildings(lon, lat, radiusMeters){
-      // bbox生成（緯度経度の簡易近似）
       const dLat = (radiusMeters / 111320);
       const dLon = radiusMeters / (111320 * Math.cos(lat * DEG2RAD));
       const s = lat - dLat, w = lon - dLon, n = lat + dLat, e = lon + dLon;
-
       const query = `\n[out:json][timeout:25];\n(\n  way["building"](${s},${w},${n},${e});\n  relation["building"](${s},${w},${n},${e});\n);\nout body;\n>;\nout skel qt;`;
-
       const url = 'https://overpass-api.de/api/interpreter';
       const res = await fetch(url, { method:'POST', body: query, headers: { 'Content-Type': 'text/plain' } });
       if(!res.ok) throw new Error('Overpass API error ' + res.status);
@@ -158,109 +205,159 @@
 
     // ---- Build meshes from OSM ----
     function buildCityFromOSM(osm, originLon, originLat){
-      city.clear();
-      const nodes = new Map();
-      const ways = new Map();
-      for(const el of osm.elements){
-        if(el.type === 'node') nodes.set(el.id, el);
-        if(el.type === 'way') ways.set(el.id, el);
-      }
-      const palette = [0x9fb3c8, 0xa2aab8, 0xbbc6d6, 0x8aa0b2, 0xb8c7d9];
+      city.clear(); spawns.clear();
+      const nodes = new Map(); const ways = new Map();
+      for(const el of osm.elements){ if(el.type === 'node') nodes.set(el.id, el); if(el.type === 'way') ways.set(el.id, el); }
+      const palette = ['#cfe0ff','#d8f0ff','#ffe7f3','#e7ffef','#fff5cc'];
 
       function heightFromTags(tags){
-        if(!tags) return 20 + Math.random()*60;
-        if(tags.height){
-          const m = String(tags.height).match(/([0-9.]+)/);
-          if(m) return parseFloat(m[1]);
-        }
-        if(tags["building:levels"]) return parseFloat(tags["building:levels"]) * 3.2 + 3; // 簡易換算
+        if(!tags) return 16 + Math.random()*48;
+        if(tags.height){ const m = String(tags.height).match(/([0-9.]+)/); if(m) return parseFloat(m[1]); }
+        if(tags["building:levels"]) return parseFloat(tags["building:levels"]) * 3 + 3;
         return 12 + Math.random()*40;
       }
 
       function addFootprint(nodeIds, tags){
-        // クローズ確認
         if(nodeIds.length < 3) return;
         const pts = [];
-        for(const nid of nodeIds){
-          const nd = nodes.get(nid);
-          if(!nd) return; // 欠損
-          pts.push(localXY(nd.lon, nd.lat, originLon, originLat));
-        }
-        // 自動クローズ（wayが未クローズのこともある）
+        for(const nid of nodeIds){ const nd = nodes.get(nid); if(!nd) return; pts.push(localXY(nd.lon, nd.lat, center[0], center[1])); }
         const first = pts[0], last = pts[pts.length-1];
         if(first[0] !== last[0] || first[1] !== last[1]) pts.push(first);
-
-        // Shapeへ
-        const shape = new THREE.Shape();
-        shape.moveTo(pts[0][0], pts[0][1]);
-        for(let i=1;i<pts.length;i++) shape.lineTo(pts[i][0], pts[i][1]);
-
+        const shape = new THREE.Shape(); shape.moveTo(pts[0][0], pts[0][1]); for(let i=1;i<pts.length;i++) shape.lineTo(pts[i][0], pts[i][1]);
         const h = heightFromTags(tags);
         const geom = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
-        // ThreeのExtrudeは+Z方向に伸びるので、Y=高さに合わせるため回転
-        geom.rotateX(-Math.PI/2);
-        geom.computeVertexNormals();
-
-        const mat = new THREE.MeshStandardMaterial({ color: palette[(Math.random()*palette.length)|0], metalness: 0.1, roughness: 0.85, emissive: 0x0a0f18, emissiveIntensity: 0.2 });
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.position.y = 0;
-        mesh.castShadow = false; // 影は負荷になるのでOFF（必要ならON）
-        mesh.receiveShadow = false;
-        mesh.userData = { tags, height: h };
+        geom.rotateX(-Math.PI/2); geom.computeVertexNormals();
+        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(palette[(Math.random()*palette.length)|0]), metalness: 0.05, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.05 });
+        const mesh = new THREE.Mesh(geom, mat); mesh.position.y = 0; mesh.castShadow = false; mesh.receiveShadow = false; mesh.userData = { tags, height: h };
         city.add(mesh);
       }
 
-      // ways (building)
-      for(const el of osm.elements){
-        if(el.type === 'way' && el.tags && el.tags.building){
-          addFootprint(el.nodes, el.tags);
-        }
-      }
-      // NOTE: relation(multipolygon) は簡略化のため未対応。必要なら追加実装可。
+      for(const el of osm.elements){ if(el.type === 'way' && el.tags && el.tags.building){ addFootprint(el.nodes, el.tags); } }
+
+      // スポーンを生成
+      spawnMonsters();
     }
 
+    // ---- Spawns ----
+    function spawnMonsters(count = 10){
+      spawns.clear();
+      const area = 900; // 配置範囲（±area）
+      for(let i=0;i<count;i++){
+        const mon = MONS[(Math.random()*MONS.length)|0];
+        const g = new THREE.Group();
+        // ベース球
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 24, 24), new THREE.MeshStandardMaterial({ color: mon.color, emissive: 0xffffff, emissiveIntensity: 0.25 }));
+        // マーカーのリング
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
+        ring.rotation.x = Math.PI/2;
+        g.add(sphere); g.add(ring);
+        g.position.set((Math.random()-0.5)*2*area, 12, (Math.random()-0.5)*2*area);
+        g.userData = { type:'spawn', mon };
+        spawns.add(g);
+      }
+    }
+
+    // ---- Battle state ----
+    const battleEl = document.getElementById('battle');
+    const enemyNameEl = document.getElementById('enemyName');
+    const enemyHPEl = document.getElementById('enemyHP');
+    const enemyAvatarEl = document.getElementById('enemyAvatar');
+    const battleLogEl = document.getElementById('battleLog');
+    const attackBtn = document.getElementById('attackBtn');
+    const runBtn = document.getElementById('runBtn');
+    const closeBattle = document.getElementById('closeBattle');
+
+    let currentEnemy = null; let enemyHP = 0; let myHP = 30;
+
+    function openBattle(mon){
+      currentEnemy = mon; enemyHP = 20 + Math.floor(Math.random()*15); myHP = 30;
+      enemyNameEl.textContent = mon.name; enemyHPEl.textContent = enemyHP;
+      enemyAvatarEl.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`;
+      battleLogEl.textContent = '野生の ' + mon.name + ' があらわれた！';
+      battleEl.style.display = 'flex';
+    }
+
+    function closeBattleUI(){ battleEl.style.display = 'none'; }
+
+    attackBtn.addEventListener('click', ()=>{
+      if(!currentEnemy) return;
+      const dmg = randInt(...currentEnemy.power);
+      enemyHP = Math.max(0, enemyHP - dmg);
+      enemyHPEl.textContent = enemyHP;
+      battleLogEl.textContent = `${currentEnemy.name} に ${dmg} ダメージ！`;
+      if(enemyHP === 0){
+        // 勝利
+        setTimeout(()=> openResult(currentEnemy), 400);
+        battleEl.style.display = 'none';
+        return;
+      }
+      // 反撃（ゆるめ）
+      const counter = randInt(3,8); myHP = Math.max(0, myHP - counter);
+      battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`;
+    });
+
+    runBtn.addEventListener('click', ()=>{ battleLogEl.textContent = 'にげた！'; setTimeout(closeBattleUI, 250); });
+    closeBattle.addEventListener('click', closeBattleUI);
+
+    // ---- Result ----
+    const resultEl = document.getElementById('result');
+    const resultAvatar = document.getElementById('resultAvatar');
+    const resultName = document.getElementById('resultName');
+    const keepBtn = document.getElementById('keepBtn');
+    const continueBtn = document.getElementById('continueBtn');
+    let captured = null;
+
+    function openResult(mon){
+      captured = mon; resultName.textContent = mon.name; resultAvatar.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`; resultEl.style.display='flex';
+    }
+    keepBtn.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
+    continueBtn.addEventListener('click', ()=>{ resultEl.style.display='none'; });
+
+    // ---- Dex (localStorage) ----
+    const DEX_KEY = 'pastel_city_dex_v1';
+    const dexOverlay = document.getElementById('dexOverlay');
+    const dexGrid = document.getElementById('dexGrid');
+    const closeDex = document.getElementById('closeDex');
+    function loadDex(){ try{ return JSON.parse(localStorage.getItem(DEX_KEY) || '[]'); }catch{ return []; } }
+    function saveDex(list){ localStorage.setItem(DEX_KEY, JSON.stringify(list)); }
+    function addToDex(mon){ const list = loadDex(); list.push({ key: mon.key, name: mon.name, color: mon.color, ts: Date.now() }); saveDex(list); showDex(); }
+    function showDex(){
+      const list = loadDex(); dexGrid.innerHTML = '';
+      if(list.length===0){ dexGrid.innerHTML = '<div class="muted">まだ何も捕まえていません。</div>'; }
+      else{
+        for(const it of list){ const d = document.createElement('div'); d.className='card'; d.innerHTML = `<div style="width:96px;height:96px;border-radius:14px;margin:0 auto;background:linear-gradient(135deg, ${it.color}, #ffffff);"></div><div style="height:8px"></div><div><strong>${it.name}</strong></div><div class="muted">${new Date(it.ts).toLocaleString()}</div>`; dexGrid.appendChild(d); }
+      }
+      dexOverlay.style.display='flex';
+    }
+    closeDex.addEventListener('click', ()=> dexOverlay.style.display='none');
+
+    document.getElementById('dex').addEventListener('click', showDex);
+
+    // ---- Load & build ----
     async function loadAndBuild(){
       setStatus('OSM建物取得中…');
-      try{
-        const data = await fetchBuildings(center[0], center[1], RADIUS_M);
-        buildCityFromOSM(data, center[0], center[1]);
-        fitCamera();
-        setStatus('完了: ' + city.children.length + ' 棟');
-      }catch(err){
-        console.error(err);
-        setStatus('取得失敗: ' + err.message);
-      }
+      try{ const data = await fetchBuildings(center[0], center[1], RADIUS_M); buildCityFromOSM(data, center[0], center[1]); fitCamera(); setStatus('完了: ' + city.children.length + ' 棟 / スポーン: ' + spawns.children.length); }
+      catch(err){ console.error(err); setStatus('取得失敗: ' + err.message); }
     }
 
-    function fitCamera(){
-      // 簡易で街全体が入る距離へ
-      controls.target.set(0,0,0);
-      camera.position.set(0, 800, 1200);
-      controls.update();
-    }
+    function fitCamera(){ controls.target.set(0,0,0); camera.position.set(0, 540, 1100); controls.update(); }
 
-    // UI
     document.getElementById('ui').addEventListener('click', (e)=>{
       const btn = e.target.closest('button'); if(!btn) return;
       if(btn.id === 'refresh'){ loadAndBuild(); return; }
-      const key = btn.dataset.spot;
-      if(key && CENTER_PRESETS[key]){ center = CENTER_PRESETS[key].slice(); loadAndBuild(); }
+      if(btn.id === 'spawn'){ spawnMonsters(10); setStatus('スポーン作成: ' + spawns.children.length); return; }
+      if(btn.dataset.spot){ const key = btn.dataset.spot; if(CENTER_PRESETS[key]){ center = CENTER_PRESETS[key].slice(); loadAndBuild(); } }
     });
 
-    // Click highlight
+    // Click interactions (buildings & spawns)
     addEventListener('pointerdown', (e)=>{
       const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left)/rect.width)*2 - 1;
-      mouse.y = -((e.clientY - rect.top)/rect.height)*2 + 1;
+      mouse.x = ((e.clientX - rect.left)/rect.width)*2 - 1; mouse.y = -((e.clientY - rect.top)/rect.height)*2 + 1;
       raycaster.setFromCamera(mouse, camera);
-      const hit = raycaster.intersectObjects(city.children, false)[0];
-      if(highlighted){ highlighted.material = origMat; highlighted = null; origMat = null; }
-      if(hit){
-        highlighted = hit.object; origMat = hit.object.material;
-        const glow = origMat.clone(); glow.emissive = new THREE.Color(0xff9055); glow.emissiveIntensity = 1.2; highlighted.material = glow;
-        const tags = highlighted.userData.tags || {}; const h = Math.round(highlighted.userData.height);
-        showTip(e.clientX, e.clientY, `${tags.name? tags.name + ' / ' : ''}高さ: ${h}m`);
-      } else { hideTip(); }
+      const hitsSpawn = raycaster.intersectObjects(spawns.children, true);
+      if(hitsSpawn.length){ const g = hitsSpawn[0].object.parent; const mon = g.userData.mon; openBattle(mon); return; }
+      const hitB = raycaster.intersectObjects(city.children, false)[0];
+      if(hitB){ const tags = hitB.object.userData.tags || {}; const h = Math.round(hitB.object.userData.height); showTip(e.clientX, e.clientY, `${tags.name? tags.name + ' / ' : ''}高さ: ${h}m`); } else { hideTip(); }
     });
 
     function showTip(x,y, text){ const t = document.getElementById('tooltip'); t.textContent = text; t.style.left=x+'px'; t.style.top=y+'px'; t.style.opacity=1; }
@@ -268,15 +365,16 @@
 
     // Status
     const hud = document.getElementById('hud');
-    function setStatus(msg){ hud.textContent = msg + ' ｜ データ: OpenStreetMap/Overpass API'; }
+    function setStatus(msg){ hud.textContent = `Pastel City Hunt｜${msg}`; }
 
     // Resize
-    addEventListener('resize', ()=>{
-      camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
-    });
+    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
     // Animate
-    (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+    ;(function loop(){ requestAnimationFrame(loop); spawns.children.forEach((g,i)=>{ g.rotation.y += 0.01; g.position.y = 12 + Math.sin(performance.now()/600 + i)*1.5; }); controls.update(); renderer.render(scene, camera); })();
+
+    // Helpers
+    function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 
     // Boot
     loadAndBuild();
