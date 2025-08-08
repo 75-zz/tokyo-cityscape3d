@@ -355,7 +355,7 @@ out skel qt;`;
     let currentEnemy = null; let enemyHP = 0; let myHP = 30;
 
     function openBattle(mon){ currentEnemy = mon; enemyHP = 20 + Math.floor(Math.random()*15); myHP = 30; enemyNameEl.textContent = mon.name; enemyHPEl.textContent = enemyHP; battleEl.style.display = 'flex'; ensureCard(enemyAvatar, mon); battleLogEl.textContent = '野生の ' + mon.name + ' があらわれた！'; playBattleStart(); }
-    function closeBattleUI(){ battleEl.style.display = 'none'; }
+    function closeBattleUI(){ battleEl.style.display = 'none'; disposeCardsIn(enemyAvatar); }
 
     if(attackBtn) attackBtn.addEventListener('click', ()=>{ if(!currentEnemy) return; playSwing(); const dmg = randInt(...currentEnemy.power); setTimeout(()=>{ playHit(); enemyHP = Math.max(0, enemyHP - dmg); enemyHPEl.textContent = enemyHP; battleLogEl.textContent = `${currentEnemy.name} に ${dmg} ダメージ！`; if(enemyHP === 0){ playFanfare(); setTimeout(()=> openResult(currentEnemy), 400); battleEl.style.display = 'none'; return; } const counter = randInt(3,8); myHP = Math.max(0, myHP - counter); playCounter(); battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`; }, 120); });
     if(runBtn) runBtn.addEventListener('click', ()=>{ playRun(); battleLogEl.textContent = 'にげた！'; setTimeout(closeBattleUI, 250); });
@@ -371,8 +371,8 @@ out skel qt;`;
 
     let captured = null;
     function openResult(mon){ captured = mon; resultName.textContent = mon.name + ' をGET！！'; resultEl.style.display='flex'; ensureCard(resultAvatar, mon); }
-    if(keepBtn) keepBtn.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
-    if(continueBtn) continueBtn.addEventListener('click', ()=>{ resultEl.style.display='none'; });
+    if(keepBtn) keepBtn.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; disposeCardsIn(resultAvatar); });
+    if(continueBtn) continueBtn.addEventListener('click', ()=>{ resultEl.style.display='none'; disposeCardsIn(resultAvatar); });
 
     // ---- Dex (localStorage) ----
     const DEX_KEY = 'pastel_city_dex_v2';
@@ -384,7 +384,7 @@ out skel qt;`;
     function saveDex(list){ localStorage.setItem(DEX_KEY, JSON.stringify(list)); }
     function addToDex(mon){ const list = loadDex(); list.push({ key: mon.key, name: mon.name, color: mon.color, ts: Date.now() }); saveDex(list); showDex(); const count = list.length; if(MILESTONES.includes(count)) openCelebration(count); }
     function showDex(){ const list = loadDex(); dexGrid.innerHTML = ''; dexOverlay.style.display='flex'; if(list.length===0){ dexGrid.innerHTML = '<div class="muted">まだ何も捕まえていません。</div>'; } else { for(const it of list){ const d = document.createElement('div'); d.className='card'; const c = document.createElement('div'); c.className='c3d'; d.appendChild(c); const name = document.createElement('div'); name.innerHTML = `<strong>${it.name}</strong>`; d.appendChild(name); const time = document.createElement('div'); time.className='muted'; time.textContent = new Date(it.ts).toLocaleString(); d.appendChild(time); dexGrid.appendChild(d); ensureCard(c, it, true); c.style.cursor = 'pointer'; c.addEventListener('click', ()=>{ const entry = containerToCard.get(c); if(entry){ triggerCardReaction(entry); } playCry(it); }); } } }
-    function hideDex(){ dexOverlay.style.display='none'; }
+    function hideDex(){ dexOverlay.style.display='none'; disposeDexCards(); }
     if(closeDexBtn) closeDexBtn.addEventListener('click', hideDex); if(closeDexX) closeDexX.addEventListener('click', hideDex);
     document.getElementById('dex').addEventListener('click', showDex);
 
@@ -464,6 +464,11 @@ out skel qt;`;
 
     function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
 
+    // ---- WebGL disposal helpers ----
+    function __loseCanvasContext(el){ if(!el) return; el.querySelectorAll('canvas').forEach(cv=>{ try{ const gl = cv.getContext('webgl') || cv.getContext('webgl2'); const ext = gl && gl.getExtension && gl.getExtension('WEBGL_lose_context'); ext && ext.loseContext && ext.loseContext(); }catch{} cv.remove(); }); }
+    function disposeDexCards(){ const grid = document.getElementById('dexGrid'); if(grid) __loseCanvasContext(grid); }
+    function disposeCardsIn(container){ if(container) __loseCanvasContext(container); }
+
     // ---- Time-of-day THEME ----
     let currentPhase = null; function phaseFromDate(d){ const h = d.getHours(); if(h >= 5 && h < 9) return 'dawn'; if(h >= 9 && h < 17) return 'day'; if(h >= 17 && h < 19) return 'dusk'; return 'night'; }
     const THEMES = { dawn: { sky:'#f7f2ff', ground:'#eef4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xdecfff, grid2:0xeaf2ff, ambI:0.9, sunI:0.7, sunC:'#ffd4a8', fogC:'#f0f4ff', fogN:2000, fogF:6000, bEmiss:'#ffffff', bEmissI:0.05, btn:'#ffffff', btnLine:'#d7dce6', glass:'rgba(255,255,255,.7)' }, day:  { sky:'#f6f7fb', ground:'#f0f4ff', uiBg:'#f6f7fb', uiInk:'#0b0f14', grid1:0xbed2ff, grid2:0xdee7ff, ambI:1.0, sunI:0.8, sunC:'#ffffff', fogC:null, fogN:0,    fogF:0, bEmiss:'#ffffff', bEmissI:0.03, btn:'#ffffff', btnLine:'#d7dce6', glass:'rgba(255,255,255,.7)' }, dusk: { sky:'#ffece1', ground:'#fff3e8', uiBg:'#fff5ef', uiInk:'#111827', grid1:0xffc9a9, grid2:0xffeedf, ambI:0.7, sunI:0.6, sunC:'#ffb07a', fogC:'#ffe8d8', fogN:1800, fogF:5200, bEmiss:'#ffd9b6', bEmissI:0.06, btn:'#fff7f0', btnLine:'#ffd9b6', glass:'rgba(255,245,239,.7)' }, night:{ sky:'#0b1220', ground:'#0f1524', uiBg:'#0f1524', uiInk:'#e5ecff', grid1:0x1f2a44, grid2:0x253252, ambI:0.35, sunI:0.25, sunC:'#8fb5ff', fogC:'#0a1022',  fogN:800,  fogF:3000, bEmiss:'#8fb5ff', bEmissI:0.08, btn:'#151c2b', btnLine:'#23314f', glass:'rgba(16,22,36,.5)' } };
@@ -473,8 +478,12 @@ out skel qt;`;
     setInterval(()=>applyTimeOfDayTheme(), 60*1000); addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') applyTimeOfDayTheme(); });
 
     // ---- Audio ----
-    let ACTX = null; let bgmNodes = [];
-    function ensureAudio(){ if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } } if((ACTX && ACTX.state) === 'suspended'){ ACTX.resume(); } }
+    let ACTX = null; let bgmNodes = []; let AUDIO_OK = false;
+    function ensureAudio(){
+      if(!AUDIO_OK) return;
+      if(!ACTX){ const C = window.AudioContext || window.webkitAudioContext; if(C){ ACTX = new C(); } }
+      if(ACTX && ACTX.state === 'suspended'){ ACTX.resume(); }
+    } } if((ACTX && ACTX.state) === 'suspended'){ ACTX.resume(); } }
     function beep(freq=600, dur=0.12, type='triangle', vol=0.03, t0){ if(!ACTX) return; const t = t0 ?? ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); o.connect(g).connect(ACTX.destination); o.start(t); o.stop(t+dur); }
     function note(freq, start, dur, type='sine', vol=0.05){ if(!ACTX) return; const o=ACTX.createOscillator(); const g=ACTX.createGain(); o.type=type; o.frequency.setValueAtTime(freq, start); g.gain.setValueAtTime(0, start); g.gain.linearRampToValueAtTime(vol, start+0.03); g.gain.exponentialRampToValueAtTime(0.0001, start+dur); o.connect(g).connect(ACTX.destination); o.start(start); o.stop(start+dur); bgmNodes.push(o,g); }
     function stopBGM(){ bgmNodes.forEach(n=>{ try{ (n.stop && n.stop()); (n.disconnect && n.disconnect()); }catch{} }); bgmNodes=[]; }
@@ -488,14 +497,18 @@ out skel qt;`;
     function playRun(){ ensureAudio(); if(!ACTX) return; const t=ACTX.currentTime; beep(880,0.06,'sine',0.02,t); beep(660,0.06,'sine',0.02,t+0.06); }
 
     // user-gesture unlock (once)
-    function __unlockAudio(){ ensureAudio(); window.removeEventListener('pointerdown', __unlockAudio); window.removeEventListener('keydown', __unlockAudio); }
+    function __unlockAudio(){ AUDIO_OK = true; ensureAudio(); window.removeEventListener('pointerdown', __unlockAudio); window.removeEventListener('keydown', __unlockAudio); }
     window.addEventListener('pointerdown', __unlockAudio, {once:true});
     window.addEventListener('keydown', __unlockAudio, {once:true});
 
     // "ゴージャス" BGM for celebration
-    function playCelebrationBGM(level){ ensureAudio(); if(!ACTX) return; stopBGM(); const t=ACTX.currentTime; const base = 392; // G4
-      const seq = [1, 5/4, 3/2, 2, 5/3, 15/8, 2]; // 明るい進行
+    function playCelebrationBGM(level){
+      if(!AUDIO_OK){ const once=()=>{ window.removeEventListener('pointerdown', once); window.removeEventListener('keydown', once); playCelebrationBGM(level); }; window.addEventListener('pointerdown', once, {once:true}); window.addEventListener('keydown', once, {once:true}); return; }
+      ensureAudio(); if(!ACTX) return; stopBGM(); const t=ACTX.currentTime; const base = 392;
+      const seq = [1, 5/4, 3/2, 2, 5/3, 15/8, 2];
       let cur = t; const step = 0.28; for(let i=0;i<seq.length;i++){ const f = base*seq[i]; note(f, cur, 0.24, 'triangle', 0.06); note(f*2, cur, 0.22, 'sine', 0.03); cur += step; }
+      const chord = [base, base*5/4, base*3/2, base*2]; const landT = t + seq.length*step + 0.1; chord.forEach((f,idx)=> note(f, landT, 1.2-idx*0.1, 'triangle', 0.05));
+    }
       // きらびやかな和音の着地
       const chord = [base, base*5/4, base*3/2, base*2]; const landT = t + seq.length*step + 0.1; chord.forEach((f,idx)=> note(f, landT, 1.2-idx*0.1, 'triangle', 0.05));
     }
