@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Tokyo 3D — Pastel City Hunt (OSM + Three.js)</title>
   <style>
     :root{
@@ -11,17 +11,17 @@
     }
     html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); }
     #app { position: fixed; inset: 0; }
-    #hud { position: fixed; left: 12px; bottom: 12px; color: var(--ink); font: 12px/1.4 system-ui, "Noto Sans JP", sans-serif; background: var(--glass); border: 1px solid var(--line); padding: 8px 10px; border-radius: 10px; user-select: none; backdrop-filter: blur(8px); }
-    #ui { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 5; }
+    #hud { position: fixed; left: 12px; bottom: 12px; color: var(--ink); font: 12px/1.4 system-ui, "Noto Sans JP", sans-serif; background: var(--glass); border: 1px solid var(--line); padding: 8px 10px; border-radius: 10px; user-select: none; backdrop-filter: blur(8px); z-index:5; }
+    #ui { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 6; }
     #ui button { background:var(--btn); color:var(--ink); border:1px solid var(--btn-line); padding:8px 12px; border-radius:10px; cursor:pointer; font:12px/1.2 system-ui; box-shadow: 0 1px 0 rgba(0,0,0,.03); }
     #ui button:hover{ filter: brightness(0.98); }
-    #tooltip { position: fixed; pointer-events:none; color:var(--ink); background:var(--glass); padding:6px 8px; border-radius:8px; font:12px/1.3 system-ui; transform: translate(-50%,-130%); opacity:0; transition:opacity .12s; border:1px solid var(--line); backdrop-filter: blur(8px); }
-    #warn { position: fixed; inset: 12px 12px auto 12px; background: var(--glass); color: var(--ink); border: 1px solid var(--line); padding: 10px 12px; border-radius: 12px; font: 12px/1.5 system-ui, "Noto Sans JP", sans-serif; z-index: 6; display:none; backdrop-filter: blur(8px); }
+    #tooltip { position: fixed; pointer-events:none; color:var(--ink); background:var(--glass); padding:6px 8px; border-radius:8px; font:12px/1.3 system-ui; transform: translate(-50%,-130%); opacity:0; transition:opacity .12s; border:1px solid var(--line); backdrop-filter: blur(8px); z-index:6; }
+    #warn { position: fixed; inset: 12px 12px auto 12px; background: var(--glass); color: var(--ink); border: 1px solid var(--line); padding: 10px 12px; border-radius: 12px; font: 12px/1.5 system-ui, "Noto Sans JP", sans-serif; z-index: 7; display:none; backdrop-filter: blur(8px); }
     #warn strong { color:#4c8dff; }
 
     /* Overlays */
     .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:10; }
-    .sheet{ width:min(560px, 92vw); background:var(--glass); border:1px solid var(--line); border-radius:16px; padding:16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); }
+    .sheet{ width:min(620px, 94vw); background:var(--glass); border:1px solid var(--line); border-radius:16px; padding:16px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.08); }
     .row{ display:flex; gap:12px; align-items:center; }
     .space{ height:12px; }
     .title{ font: 600 16px/1.2 system-ui, "Noto Sans JP"; }
@@ -29,8 +29,18 @@
     .btn{ background:var(--btn); border:1px solid var(--btn-line); border-radius:10px; padding:8px 12px; cursor:pointer; }
     .btn.primary{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border:none; }
     .btn.flat{ background:transparent; border: none; color:#1f2937; text-decoration: underline; }
-    .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap:12px; }
-    .card{ background:var(--btn); border:1px solid var(--btn-line); border-radius:12px; padding:10px; text-align:center; }
+    .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:12px; }
+    .card{ background:var(--btn); border:1px solid var(--btn-line); border-radius:12px; padding:10px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .card .c3d{ width: 140px; height: 110px; border-radius: 10px; overflow: hidden; border:1px solid var(--btn-line); background: #fff; }
+
+    /* Mobile D-Pad */
+    #pad { position: fixed; left: 12px; bottom: 12px; width: 120px; height: 120px; z-index: 6; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; opacity: .95; }
+    .padbtn { background: var(--glass); border:1px solid var(--btn-line); border-radius: 12px; touch-action: none; user-select: none; height: 36px; display:flex; align-items:center; justify-content:center; font: 600 14px/1 system-ui; }
+    .padbtn:active{ filter: brightness(.96); }
+    .padbtn.empty{ visibility: hidden; }
+
+    /* 3D avatars in overlays */
+    .c3d-battle, .c3d-result { width: 180px; height: 140px; border-radius: 12px; border:1px solid var(--btn-line); background:#fff; overflow:hidden; }
   </style>
   <script type="importmap">
     {
@@ -56,13 +66,26 @@
   <div id="tooltip"></div>
   <div id="warn"></div>
 
+  <!-- Mobile D-Pad -->
+  <div id="pad">
+    <div class="padbtn empty"></div>
+    <div class="padbtn" data-dir="f">▲</div>
+    <div class="padbtn empty"></div>
+    <div class="padbtn" data-dir="l">◀</div>
+    <div class="padbtn" data-dir="b">▼</div>
+    <div class="padbtn" data-dir="r">▶</div>
+    <div class="padbtn empty"></div>
+    <div class="padbtn" data-dir="s">⟲</div>
+    <div class="padbtn empty"></div>
+  </div>
+
   <!-- Battle Overlay -->
   <div id="battle" class="overlay">
     <div class="sheet">
       <div class="row"><div class="title">バトル開始！</div><div style="flex:1"></div><button class="btn flat" id="closeBattle">閉じる</button></div>
       <div class="space"></div>
       <div class="row">
-        <div id="enemyAvatar" style="width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg,var(--accent2),#ffd6e8);"></div>
+        <div class="c3d-battle" id="enemyAvatar"></div>
         <div style="flex:1">
           <div><strong id="enemyName">???</strong></div>
           <div class="muted">HP: <span id="enemyHP">--</span></div>
@@ -83,7 +106,7 @@
     <div class="sheet" style="text-align:center">
       <div class="title">GET!!</div>
       <div class="space"></div>
-      <div id="resultAvatar" style="width:160px;height:160px;margin:0 auto;border-radius:18px;background:linear-gradient(135deg,var(--accent3),#d2f5dd);"></div>
+      <div class="c3d-result" id="resultAvatar"></div>
       <div class="space"></div>
       <div><strong id="resultName">---</strong></div>
       <div class="space"></div>
@@ -130,7 +153,7 @@
     };
     let center = CENTER_PRESETS.tokyo.slice();
 
-    // モンスター定義（IPを避けたオリジナル）
+    // モンスター定義（IP回避のオリジナル）
     const MONS = [
       { key:'fluffin', name:'フラッフィン', color:'#ffd1e6', power:[8,14] },
       { key:'sparkid', name:'スパーキッド', color:'#cfe6ff', power:[10,16] },
@@ -141,16 +164,14 @@
 
     // ---- Three.js setup ----
     const container = document.getElementById('app');
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha:true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha:true, powerPreference:'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    // パステルの空
-    const bgGrad = new THREE.Color('#f6f7fb');
-    scene.background = bgGrad;
+    scene.background = new THREE.Color('#f6f7fb');
 
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 8000);
     camera.position.set(0, 540, 1100);
@@ -161,26 +182,21 @@
     controls.minDistance = 50;
     controls.maxDistance = 4000;
 
-    // ライトもパステル寄り
+    // ライト
     scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(800, 1500, 600);
-    scene.add(sun);
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(800, 1500, 600); scene.add(sun);
 
-    // ground（明るめ）
+    // 地面
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: 0xf0f4ff, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    scene.add(ground);
+    ground.rotation.x = -Math.PI / 2; ground.position.y = 0; scene.add(ground);
 
-    // 柔らかいグリッド
-    const grid = new THREE.GridHelper(4000, 80, 0xbed2ff, 0xdee7ff);
-    grid.position.y = 0.02; scene.add(grid);
+    // グリッド
+    const grid = new THREE.GridHelper(4000, 80, 0xbed2ff, 0xdee7ff); grid.position.y = 0.02; scene.add(grid);
 
     const city = new THREE.Group(); scene.add(city);
     const spawns = new THREE.Group(); scene.add(spawns);
 
-    // Tooltip & raycaster
+    // Raycast
     const tooltip = document.getElementById('tooltip');
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
@@ -203,114 +219,112 @@
     }
 
     // ---- Build meshes from OSM ----
-    function buildCityFromOSM(osm, originLon, originLat){
+    function buildCityFromOSM(osm){
       city.clear(); spawns.clear();
-      const nodes = new Map(); const ways = new Map();
-      for(const el of osm.elements){ if(el.type === 'node') nodes.set(el.id, el); if(el.type === 'way') ways.set(el.id, el); }
+      const nodes = new Map();
+      for(const el of osm.elements){ if(el.type === 'node') nodes.set(el.id, el); }
       const palette = ['#cfe0ff','#d8f0ff','#ffe7f3','#e7ffef','#fff5cc'];
 
       function heightFromTags(tags){
         if(!tags) return 16 + Math.random()*48;
-        if(tags.height){ const m = String(tags.height).match(/([0-9.]+)/); if(m) return parseFloat(m[1]); }
-        if(tags["building:levels"]) return parseFloat(tags["building:levels"]) * 3 + 3;
+        if(tags?.height){ const m = String(tags.height).match(/([0-9.]+)/); if(m) return parseFloat(m[1]); }
+        if(tags?.["building:levels"]) return parseFloat(tags["building:levels"]) * 3 + 3;
         return 12 + Math.random()*40;
       }
 
-      function addFootprint(nodeIds, tags){
-        if(nodeIds.length < 3) return;
+      for(const el of osm.elements){
+        if(el.type !== 'way' || !el.tags?.building) continue;
         const pts = [];
-        for(const nid of nodeIds){ const nd = nodes.get(nid); if(!nd) return; pts.push(localXY(nd.lon, nd.lat, center[0], center[1])); }
+        for(const nid of el.nodes){ const nd = nodes.get(nid); if(!nd) { pts.length=0; break; } pts.push(localXY(nd.lon, nd.lat, center[0], center[1])); }
+        if(pts.length < 3) continue;
         const first = pts[0], last = pts[pts.length-1];
         if(first[0] !== last[0] || first[1] !== last[1]) pts.push(first);
         const shape = new THREE.Shape(); shape.moveTo(pts[0][0], pts[0][1]); for(let i=1;i<pts.length;i++) shape.lineTo(pts[i][0], pts[i][1]);
-        const h = heightFromTags(tags);
+        const h = heightFromTags(el.tags);
         const geom = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
         geom.rotateX(-Math.PI/2); geom.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(palette[(Math.random()*palette.length)|0]), metalness: 0.05, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.05 });
-        const mesh = new THREE.Mesh(geom, mat); mesh.position.y = 0; mesh.castShadow = false; mesh.receiveShadow = false; mesh.userData = { tags, height: h };
+        const mesh = new THREE.Mesh(geom, mat); mesh.position.y = 0; mesh.castShadow = false; mesh.receiveShadow = false; mesh.userData = { tags: el.tags, height: h };
         city.add(mesh);
       }
 
-      for(const el of osm.elements){ if(el.type === 'way' && el.tags && el.tags.building){ addFootprint(el.nodes, el.tags); } }
-
-      // スポーンを生成
       spawnMonsters();
     }
 
-    // ---- Monster models ----
+    // ---- Monster models (more details) ----
     function makeMonsterModel(mon){
       const g = new THREE.Group();
       g.userData.mon = mon;
-      const mainMat = new THREE.MeshToonMaterial({ color: new THREE.Color(mon.color) });
-      const white = new THREE.MeshToonMaterial({ color: 0xffffff });
-      const dark = new THREE.MeshToonMaterial({ color: 0x1f2937 });
+      const toon = (c)=> new THREE.MeshToonMaterial({ color: new THREE.Color(c) });
+      const mainMat = toon(mon.color);
+      const white = toon('#ffffff');
+      const dark = toon('#1f2937');
 
       const addEye = (x,y,z,s=1)=>{
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.9*s, 12, 12), dark);
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.9*s, 16, 16), dark);
         eye.position.set(x,y,z); g.add(eye);
+      };
+
+      const addBlush = (x,y,z)=>{
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), toon('#ffb5d1'));
+        b.position.set(x,y,z); b.scale.set(1.4,0.6,1.2); g.add(b);
       };
 
       switch(mon.key){
         case 'fluffin': {
           const body = new THREE.Mesh(new THREE.SphereGeometry(8, 24, 24), mainMat);
           const earL = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5.5, 12), mainMat);
-          const earR = earL.clone();
-          earL.material.side = THREE.DoubleSide; earR.material.side = THREE.DoubleSide;
-          earL.position.set(-4, 10, 0); earL.rotation.z = 0.2;
-          earR.position.set( 4, 10, 0); earR.rotation.z = -0.2;
-          addEye(-2.2, 3.2, 7.4); addEye(2.2, 3.2, 7.4);
-          g.add(body, earL, earR);
+          const earR = earL.clone(); earL.material.side = earR.material.side = THREE.DoubleSide;
+          earL.position.set(-4, 10, 0); earL.rotation.z = 0.2; earR.position.set(4, 10, 0); earR.rotation.z = -0.2;
+          const footL = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 16), mainMat); const footR = footL.clone();
+          footL.position.set(-3, -7.5, 2); footR.position.set(3, -7.5, 2);
+          addEye(-2.2, 3.2, 7.4); addEye(2.2, 3.2, 7.4); addBlush(-3.5, 1.8, 6.6); addBlush(3.5, 1.8, 6.6);
+          g.add(body, earL, earR, footL, footR);
           g.userData.anim = 'float';
           break;
         }
         case 'sparkid': {
           const body = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 10), mainMat);
-          const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 7, 10), white);
-          const tip = new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 12), white);
+          const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 7, 12), white);
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 16), white);
+          const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 5, 10), mainMat);
+          const armR = armL.clone(); armL.position.set(-7, 0.5, 0); armR.position.set(7, 0.5, 0); armL.rotation.z = 1.2; armR.rotation.z = -1.2;
           ant.position.set(0, 7.5, 0); tip.position.set(0, 11.5, 0);
           addEye(-2.8, 2.5, 5.2); addEye(2.8, 2.5, 5.2);
-          g.add(body, ant, tip);
+          g.add(body, ant, tip, armL, armR);
           g.userData.parts = { ant, tip };
           g.userData.anim = 'antenna';
           break;
         }
         case 'mossie': {
           const body = new THREE.Mesh(new THREE.SphereGeometry(7.5, 24, 24), mainMat);
-          const tail = new THREE.Mesh(new THREE.ConeGeometry(3.2, 6.5, 12), mainMat);
-          tail.material.side = THREE.DoubleSide;
-          tail.rotation.x = Math.PI; tail.position.set(0, -7, -1);
-          const wingL = new THREE.Mesh(new THREE.ConeGeometry(2.2, 8, 12), white);
-          const wingR = wingL.clone();
-          wingL.material.side = THREE.DoubleSide; wingR.material.side = THREE.DoubleSide;
-          wingL.rotation.z =  1.1; wingL.position.set(-7, 2, 0);
-          wingR.rotation.z = -1.1; wingR.position.set( 7, 2, 0);
+          const tail = new THREE.Mesh(new THREE.ConeGeometry(3.2, 6.5, 12), mainMat); tail.material.side = THREE.DoubleSide; tail.rotation.x = Math.PI; tail.position.set(0, -7, -1);
+          const wingL = new THREE.Mesh(new THREE.ConeGeometry(2.2, 8, 12), white); const wingR = wingL.clone();
+          wingL.material.side = wingR.material.side = THREE.DoubleSide; wingL.rotation.z =  1.1; wingL.position.set(-7, 2, 0); wingR.rotation.z = -1.1; wingR.position.set(7, 2, 0);
+          const leaf = new THREE.Mesh(new THREE.CapsuleGeometry(1.5, 3.5, 6, 10), toon('#a0e6b6')); leaf.rotation.z = 0.5; leaf.position.set(-1.2, 8.5, -1);
           addEye(-2.1, 2.6, 6.7); addEye(2.1, 2.6, 6.7);
-          g.add(body, tail, wingL, wingR);
+          g.add(body, tail, wingL, wingR, leaf);
           g.userData.parts = { wingL, wingR };
           g.userData.anim = 'flap';
           break;
         }
         case 'embero': {
           const body = new THREE.Mesh(new THREE.SphereGeometry(7.5, 24, 24), mainMat);
-          const f1 = new THREE.Mesh(new THREE.ConeGeometry(2.2, 7, 8), white);
-          const f2 = f1.clone(); const f3 = f1.clone();
-          f1.material.side = f2.material.side = f3.material.side = THREE.DoubleSide;
-          f1.position.set(0, 9.5, 0);
-          f2.position.set(-2.6, 8.8, -1.2); f2.rotation.z = 0.4;
-          f3.position.set( 2.6, 8.8, -1.2); f3.rotation.z = -0.4;
+          const f1 = new THREE.Mesh(new THREE.ConeGeometry(2.2, 7, 8), toon('#ffdcb3'));
+          const f2 = f1.clone(); const f3 = f1.clone(); f1.material.side = f2.material.side = f3.material.side = THREE.DoubleSide;
+          f1.position.set(0, 9.5, 0); f2.position.set(-2.6, 8.8, -1.2); f2.rotation.z = 0.4; f3.position.set(2.6, 8.8, -1.2); f3.rotation.z = -0.4;
+          const tail = new THREE.Mesh(new THREE.ConeGeometry(1.8, 5.5, 8), toon('#ffb899')); tail.rotation.x = Math.PI; tail.position.set(0, -7, -1.5);
           addEye(-2.2, 2.4, 6.7); addEye(2.2, 2.4, 6.7);
-          g.add(body, f1, f2, f3);
+          g.add(body, f1, f2, f3, tail);
           g.userData.parts = { f1, f2, f3 };
           g.userData.anim = 'flicker';
           break;
         }
         case 'glacio': {
           const body = new THREE.Mesh(new THREE.IcosahedronGeometry(7.5, 0), mainMat);
-          const shard1 = new THREE.Mesh(new THREE.ConeGeometry(2, 6, 6), white);
-          const shard2 = shard1.clone();
-          shard1.material.side = shard2.material.side = THREE.DoubleSide;
-          shard1.position.set(-4, -5, -2); shard1.rotation.x = -0.6;
-          shard2.position.set( 4, -5, -2); shard2.rotation.x = -0.6;
+          const shard1 = new THREE.Mesh(new THREE.ConeGeometry(2, 6, 6), toon('#e7f2ff'));
+          const shard2 = shard1.clone(); shard1.material.side = shard2.material.side = THREE.DoubleSide;
+          shard1.position.set(-4, -5, -2); shard1.rotation.x = -0.6; shard2.position.set(4, -5, -2); shard2.rotation.x = -0.6;
           addEye(-2.0, 1.8, 6.8); addEye(2.0, 1.8, 6.8);
           g.add(body, shard1, shard2);
           g.userData.parts = { body };
@@ -319,53 +333,41 @@
         }
       }
 
-      // 足場リング（出現マーカー）
+      // 足場リング
       const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 1.5, 8, 32), new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: 0xffffff, emissiveIntensity: 0.2 }));
       ring.rotation.x = Math.PI/2; g.add(ring);
 
-      // 輪郭線で視認性UP
-      const allGeo = new THREE.BufferGeometry();
-      const tmp = [];
-      g.traverse(obj=>{ if(obj.isMesh){ const eg = new THREE.EdgesGeometry(obj.geometry, 20); tmp.push(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x2f3947, transparent:true, opacity:0.35 }))); } });
-      tmp.forEach(ls=>g.add(ls));
+      // エッジ線で視認性UP
+      const outlines = [];
+      g.traverse(obj=>{ if(obj.isMesh){ const eg = new THREE.EdgesGeometry(obj.geometry, 20); outlines.push(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x2f3947, transparent:true, opacity:0.32 }))); } });
+      outlines.forEach(ls=>g.add(ls));
 
-      // サイズ感を上げる
-      g.scale.set(2.2, 2.2, 2.2);
-
+      g.scale.set(2.4, 2.4, 2.4);
       return g;
     }
 
     // ---- Spawns ----
     function spawnMonsters(count = 10){
       spawns.clear();
-      const area = 900; // 配置範囲（±area）
+      const area = 900;
       for(let i=0;i<count;i++){
         const mon = MONS[(Math.random()*MONS.length)|0];
         const g = makeMonsterModel(mon);
-        const x = (Math.random()-0.5)*2*area;
-        const z = (Math.random()-0.5)*2*area;
-        const y = getTopHeightAt(x, z) + 6; // 建物の上に乗らないよう、上端+少し浮かせる
-        g.position.set(x, y, z);
-        g.rotation.y = Math.random()*Math.PI*2;
-        g.userData.type = 'spawn';
+        const x = (Math.random()-0.5)*2*area; const z = (Math.random()-0.5)*2*area; const y = getTopHeightAt(x, z) + 6;
+        g.position.set(x, y, z); g.rotation.y = Math.random()*Math.PI*2; g.userData.type = 'spawn';
         spawns.add(g);
       }
     }
 
-    // 建物の真上/地面の高さを取得（最上位の交差点）
     function getTopHeightAt(x, z){
       const rc = new THREE.Raycaster(new THREE.Vector3(x, 5000, z), new THREE.Vector3(0, -1, 0));
-      const hits = rc.intersectObjects(city.children, false);
-      if(hits.length){ return hits[0].point.y; }
-      return 0; // 地面
-    }
+      const hits = rc.intersectObjects(city.children, false); return hits.length ? hits[0].point.y : 0;
     }
 
     // ---- Battle state ----
     const battleEl = document.getElementById('battle');
     const enemyNameEl = document.getElementById('enemyName');
     const enemyHPEl = document.getElementById('enemyHP');
-    const enemyAvatarEl = document.getElementById('enemyAvatar');
     const battleLogEl = document.getElementById('battleLog');
     const attackBtn = document.getElementById('attackBtn');
     const runBtn = document.getElementById('runBtn');
@@ -376,14 +378,14 @@
     function openBattle(mon){
       currentEnemy = mon; enemyHP = 20 + Math.floor(Math.random()*15); myHP = 30;
       enemyNameEl.textContent = mon.name; enemyHPEl.textContent = enemyHP;
-      enemyAvatarEl.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`;
+      ensureCard(enemyAvatar, mon);
       battleLogEl.textContent = '野生の ' + mon.name + ' があらわれた！';
       battleEl.style.display = 'flex';
     }
 
     function closeBattleUI(){ battleEl.style.display = 'none'; }
 
-    attackBtn.addEventListener('click', ()=>{
+    attackBtn?.addEventListener('click', ()=>{
       if(!currentEnemy) return;
       const dmg = randInt(...currentEnemy.power);
       enemyHP = Math.max(0, enemyHP - dmg);
@@ -394,26 +396,25 @@
       battleLogEl.textContent += ` / こうげきをうけた！ (${counter})`;
     });
 
-    runBtn.addEventListener('click', ()=>{ battleLogEl.textContent = 'にげた！'; setTimeout(closeBattleUI, 250); });
-    closeBattle.addEventListener('click', closeBattleUI);
+    runBtn?.addEventListener('click', ()=>{ battleLogEl.textContent = 'にげた！'; setTimeout(closeBattleUI, 250); });
+    closeBattle?.addEventListener('click', closeBattleUI);
 
     // ---- Result ----
     const resultEl = document.getElementById('result');
-    const resultAvatar = document.getElementById('resultAvatar');
     const resultName = document.getElementById('resultName');
     const keepBtn = document.getElementById('keepBtn');
     const continueBtn = document.getElementById('continueBtn');
     let captured = null;
 
-    function openResult(mon){ captured = mon; resultName.textContent = mon.name; resultAvatar.style.background = `linear-gradient(135deg, ${mon.color}, #ffffff)`; resultEl.style.display='flex'; }
-    keepBtn.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
-    continueBtn.addEventListener('click', ()=>{ resultEl.style.display='none'; });
+    function openResult(mon){ captured = mon; resultName.textContent = mon.name; ensureCard(resultAvatar, mon); resultEl.style.display='flex'; }
+    keepBtn?.addEventListener('click', ()=>{ if(captured){ addToDex(captured); } resultEl.style.display='none'; });
+    continueBtn?.addEventListener('click', ()=>{ resultEl.style.display='none'; });
 
     // ---- Dex (localStorage) ----
-    const DEX_KEY = 'pastel_city_dex_v1';
+    const DEX_KEY = 'pastel_city_dex_v2';
     const dexOverlay = document.getElementById('dexOverlay');
     const dexGrid = document.getElementById('dexGrid');
-    const closeDex = document.getElementById('closeDex');
+    const closeDexBtn = document.getElementById('closeDex');
     function loadDex(){ try{ return JSON.parse(localStorage.getItem(DEX_KEY) || '[]'); }catch{ return []; } }
     function saveDex(list){ localStorage.setItem(DEX_KEY, JSON.stringify(list)); }
     function addToDex(mon){ const list = loadDex(); list.push({ key: mon.key, name: mon.name, color: mon.color, ts: Date.now() }); saveDex(list); showDex(); }
@@ -421,18 +422,58 @@
       const list = loadDex(); dexGrid.innerHTML = '';
       if(list.length===0){ dexGrid.innerHTML = '<div class="muted">まだ何も捕まえていません。</div>'; }
       else{
-        for(const it of list){ const d = document.createElement('div'); d.className='card'; d.innerHTML = `<div style="width:96px;height:96px;border-radius:14px;margin:0 auto;background:linear-gradient(135deg, ${it.color}, #ffffff);"></div><div style="height:8px"></div><div><strong>${it.name}</strong></div><div class="muted">${new Date(it.ts).toLocaleString()}</div>`; dexGrid.appendChild(d); }
+        for(const it of list){
+          const d = document.createElement('div'); d.className='card';
+          const c = document.createElement('div'); c.className='c3d'; d.appendChild(c);
+          const name = document.createElement('div'); name.innerHTML = `<strong>${it.name}</strong>`; d.appendChild(name);
+          const time = document.createElement('div'); time.className='muted'; time.textContent = new Date(it.ts).toLocaleString(); d.appendChild(time);
+          dexGrid.appendChild(d);
+          ensureCard(c, it, true);
+        }
       }
       dexOverlay.style.display='flex';
     }
-    closeDex.addEventListener('click', ()=> dexOverlay.style.display='none');
-
+    closeDexBtn?.addEventListener('click', ()=> dexOverlay.style.display='none');
     document.getElementById('dex').addEventListener('click', showDex);
+
+    // ---- Card renderer (3D monster in UI boxes) ----
+    const cardScenes = new Set();
+    function ensureCard(container, mon, small=false){
+      container.innerHTML = '';
+      const scene = new THREE.Scene(); scene.background = new THREE.Color('#ffffff');
+      const cam = new THREE.PerspectiveCamera(35, container.clientWidth/container.clientHeight, 0.1, 1000);
+      cam.position.set(0, 0, 40);
+      const light = new THREE.HemisphereLight(0xffffff, 0xdde5ff, 1); scene.add(light);
+      const dlight = new THREE.DirectionalLight(0xffffff, .7); dlight.position.set(1,2,1); scene.add(dlight);
+      const model = makeMonsterModel(mon); model.position.y = -2; scene.add(model);
+      const r = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'low-power' });
+      r.setPixelRatio( Math.min(devicePixelRatio, 1.5) );
+      r.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(r.domElement);
+      const entry = { r, scene, cam, model };
+      cardScenes.add(entry);
+      // Resize observer
+      const ro = new ResizeObserver(()=>{ r.setSize(container.clientWidth, container.clientHeight); cam.aspect = container.clientWidth/container.clientHeight; cam.updateProjectionMatrix(); });
+      ro.observe(container);
+    }
+
+    // ---- Movement: keyboard & on-screen D-Pad ----
+    const move = { f:false, b:false, l:false, r:false, s:false };
+    const setMove = (k,val)=>{ if(k in move) move[k]=val; };
+    const keyMap = { 'KeyW':'f','ArrowUp':'f','KeyS':'b','ArrowDown':'b','KeyA':'l','ArrowLeft':'l','KeyD':'r','ArrowRight':'r','ShiftLeft':'s','ShiftRight':'s' };
+    addEventListener('keydown', (e)=>{ const k = keyMap[e.code]; if(k){ setMove(k,true); } });
+    addEventListener('keyup', (e)=>{ const k = keyMap[e.code]; if(k){ setMove(k,false); } });
+
+    // Touch buttons
+    document.getElementById('pad').addEventListener('pointerdown', (e)=>{ const b = e.target.closest('.padbtn'); if(!b) return; const d=b.dataset.dir; if(!d) return; setMove(d,true); b.setPointerCapture(e.pointerId); });
+    document.getElementById('pad').addEventListener('pointerup', (e)=>{ const b = e.target.closest('.padbtn'); if(!b) return; const d=b.dataset.dir; if(!d) return; setMove(d,false); });
+    document.getElementById('pad').addEventListener('pointercancel', (e)=>{ for(const k in move) move[k]=false; });
+    document.getElementById('pad').addEventListener('pointerleave', (e)=>{ for(const k in move) move[k]=false; });
 
     // ---- Load & build ----
     async function loadAndBuild(){
       setStatus('OSM建物取得中…');
-      try{ const data = await fetchBuildings(center[0], center[1], RADIUS_M); buildCityFromOSM(data, center[0], center[1]); fitCamera(); setStatus('完了: ' + city.children.length + ' 棟 / スポーン: ' + spawns.children.length); }
+      try{ const data = await fetchBuildings(center[0], center[1], RADIUS_M); buildCityFromOSM(data); fitCamera(); setStatus('完了: ' + city.children.length + ' 棟 / スポーン: ' + spawns.children.length); }
       catch(err){ console.error(err); setStatus('取得失敗: ' + err.message); }
     }
 
@@ -445,11 +486,9 @@
       if(btn.dataset.spot){ const key = btn.dataset.spot; if(CENTER_PRESETS[key]){ center = CENTER_PRESETS[key].slice(); loadAndBuild(); } }
     });
 
-    function findSpawnGroup(obj){
-      let cur = obj; while(cur && cur.parent){ if(cur.userData && cur.userData.type==='spawn') return cur; cur = cur.parent; } return null;
-    }
+    function findSpawnGroup(obj){ let cur = obj; while(cur && cur.parent){ if(cur.userData && cur.userData.type==='spawn') return cur; cur = cur.parent; } return null; }
 
-    // Click interactions (buildings & spawns)
+    // Click interactions
     addEventListener('pointerdown', (e)=>{
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left)/rect.width)*2 - 1; mouse.y = -((e.clientY - rect.top)/rect.height)*2 + 1;
@@ -470,51 +509,36 @@
     // Resize
     addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-    // Animate
+    // Animate (main + card scenes)
+    const clock = new THREE.Clock();
     ;(function loop(){
       requestAnimationFrame(loop);
+      const dt = Math.min(clock.getDelta(), 0.033);
+
+      // Camera move
+      const spd = (move.s ? 140 : 70) * dt;
+      const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
+      const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0)).normalize();
+      const mv = new THREE.Vector3();
+      if(move.f) mv.add(f); if(move.b) mv.addScaledVector(f, -1); if(move.r) mv.add(r); if(move.l) mv.addScaledVector(r, -1);
+      if(mv.lengthSq()>0){ mv.normalize().multiplyScalar(spd); camera.position.add(mv); controls.target.add(mv); }
+
+      // Spawn anims
       const t = performance.now()/1000;
       spawns.children.forEach((g,i)=>{
-        // 共通のふわふわ
         g.position.y = 12 + Math.sin(t*1.6 + i)*1.5;
         g.rotation.y += 0.01;
-        // 種族別アニメ
         const mon = g.userData.mon; const parts = g.userData.parts||{};
-        switch(mon?.key){
-          case 'mossie': {
-            if(parts.wingL && parts.wingR){ const a = Math.sin(t*6 + i)*0.5 + 0.6; parts.wingL.rotation.z =  1.1 + a*0.25; parts.wingR.rotation.z = -1.1 - a*0.25; }
-            break;
-          }
-          case 'sparkid': {
-            if(parts.ant && parts.tip){ parts.ant.rotation.z = Math.sin(t*4 + i)*0.15; parts.tip.position.y = 11.5 + Math.sin(t*3 + i)*0.4; }
-            break;
-          }
-          case 'embero': {
-            const p = parts; if(p && p.f1){ const k = Math.sin(t*5 + i)*0.08; p.f1.rotation.z = k; if(p.f2) p.f2.rotation.z = 0.4 + k; if(p.f3) p.f3.rotation.z = -0.4 - k; }
-            break;
-          }
-          case 'glacio': {
-            const p = parts; if(p && p.body){ p.body.rotation.y += 0.01; }
-            break;
-          }
-        }
-            break;
-          }
-          case 'sparkid': {
-            // アンテナをぷるぷる
-            break;
-          }
-          case 'embero': {
-            // 炎コーンを微振動（見た目だけ）
-            break;
-          }
-          case 'glacio': {
-            // クリスタルはゆっくりスピン
-            break;
-          }
-        }
+        if(mon?.key==='mossie' && parts.wingL && parts.wingR){ const a = Math.sin(t*6 + i)*0.5 + 0.6; parts.wingL.rotation.z =  1.1 + a*0.25; parts.wingR.rotation.z = -1.1 - a*0.25; }
+        if(mon?.key==='sparkid' && parts.ant && parts.tip){ parts.ant.rotation.z = Math.sin(t*4 + i)*0.15; parts.tip.position.y = 11.5 + Math.sin(t*3 + i)*0.4; }
+        if(mon?.key==='embero' && parts.f1){ const k = Math.sin(t*5 + i)*0.08; parts.f1.rotation.z = k; if(parts.f2) parts.f2.rotation.z = 0.4 + k; if(parts.f3) parts.f3.rotation.z = -0.4 - k; }
+        if(mon?.key==='glacio' && parts.body){ parts.body.rotation.y += 0.01; }
       });
+
       controls.update(); renderer.render(scene, camera);
+
+      // Render small card scenes
+      cardScenes.forEach(({r, scene, cam, model})=>{ model.rotation.y += 0.01; r.render(scene, cam); });
     })();
 
     // Helpers
